@@ -32,6 +32,17 @@ const providers = [
   },
 ];
 
+export function getProviderFeeRate(providerId: string): number {
+  return providerId === "moonpay" ? 0.045 : 0.05;
+}
+
+export function calculateOnrampFeeAndReceive(amount: number, providerId: string) {
+  const feeRate = getProviderFeeRate(providerId);
+  const fee = amount * feeRate;
+  const receive = amount - fee;
+  return { feeRate, fee, receive };
+}
+
 export default function OnrampPage() {
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
@@ -42,6 +53,11 @@ export default function OnrampPage() {
   const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
   const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
   const canProceed = cAddress && fiatAmount && validAddress && validAmount;
+
+  const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
+    Number(fiatAmount) || 0,
+    selectedProvider
+  );
 
   const handleProviderRedirect = () => {
     if (!canProceed) return;
@@ -161,14 +177,14 @@ export default function OnrampPage() {
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
                     <span>
-                      -${fiatAmount ? (Number(fiatAmount) * (selectedProvider === "moonpay" ? 0.045 : 0.05)).toFixed(2) : "0"}
+                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Est. receive</span>
                     <span className="font-semibold">
                       {fiatAmount && validAmount
-                        ? `~${(Number(fiatAmount) * 0.95 * (selectedProvider === "moonpay" ? 1 : 0.95)).toFixed(2)} USDC`
+                        ? `~${receiveAmount.toFixed(2)} USDC`
                         : "—"}
                     </span>
                   </div>
