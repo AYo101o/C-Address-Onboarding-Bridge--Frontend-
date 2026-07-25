@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 
@@ -43,11 +43,31 @@ export default function OnrampPage() {
   const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
   const canProceed = cAddress && fiatAmount && validAddress && validAmount;
 
+  const provider = useMemo(
+    () => providers.find((p) => p.id === selectedProvider),
+    [selectedProvider]
+  );
+
+  const feeAmount = useMemo(
+    () =>
+      fiatAmount
+        ? (Number(fiatAmount) * (selectedProvider === "moonpay" ? 0.045 : 0.05)).toFixed(2)
+        : "0",
+    [fiatAmount, selectedProvider]
+  );
+
+  const estReceive = useMemo(
+    () =>
+      fiatAmount && validAmount
+        ? `~${(Number(fiatAmount) * 0.95 * (selectedProvider === "moonpay" ? 1 : 0.95)).toFixed(2)} USDC`
+        : "—",
+    [fiatAmount, validAmount, selectedProvider]
+  );
+
   const handleProviderRedirect = () => {
     if (!canProceed) return;
     setError(null);
 
-    const provider = providers.find((p) => p.id === selectedProvider);
     if (!provider) return;
 
     if (!provider.apiKey) {
@@ -71,8 +91,6 @@ export default function OnrampPage() {
       window.open(url, "_blank", "noopener,noreferrer");
     }, 1500);
   };
-
-  const provider = providers.find((p) => p.id === selectedProvider);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -160,17 +178,11 @@ export default function OnrampPage() {
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
-                    <span>
-                      -${fiatAmount ? (Number(fiatAmount) * (selectedProvider === "moonpay" ? 0.045 : 0.05)).toFixed(2) : "0"}
-                    </span>
+                    <span>-${feeAmount}</span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Est. receive</span>
-                    <span className="font-semibold">
-                      {fiatAmount && validAmount
-                        ? `~${(Number(fiatAmount) * 0.95 * (selectedProvider === "moonpay" ? 1 : 0.95)).toFixed(2)} USDC`
-                        : "—"}
-                    </span>
+                    <span className="font-semibold">{estReceive}</span>
                   </div>
                 </div>
 

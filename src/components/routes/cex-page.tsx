@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Building2, Copy, Check, ExternalLink, Wallet } from "lucide-react";
 import { CEX_LIST } from "@/lib/types";
 
@@ -15,7 +15,7 @@ export default function CexPage() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const withdrawalUrl = selectedCex.withdrawalUrl;
+  const withdrawalUrl = useMemo(() => selectedCex.withdrawalUrl, [selectedCex]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
