@@ -122,7 +122,7 @@ export default function DashboardPage() {
           <div className="text-xs text-[var(--text-muted)] mb-1">XLM Balance</div>
           {loading ? (
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
               <span className="text-xs text-[var(--text-muted)]">Loading...</span>
             </div>
           ) : (
@@ -139,7 +139,7 @@ export default function DashboardPage() {
           <div className="text-xs text-[var(--text-muted)] mb-1">Transactions</div>
           {loading ? (
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
               <span className="text-xs text-[var(--text-muted)]">Loading...</span>
             </div>
           ) : (
