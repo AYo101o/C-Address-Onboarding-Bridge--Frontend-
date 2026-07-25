@@ -8,6 +8,20 @@ import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl } from "@/lib/stellar";
 import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
 
+// Content check for the 30s poll: transaction fields are derived from
+// immutable Horizon records, so the only meaningful changes are which
+// transactions exist (id) and their status. When nothing changed we keep the
+// previous array reference so memoized <TransactionHistory> can skip its
+// re-render entirely.
+function areTransactionsEqual(a: BridgeTransaction[], b: BridgeTransaction[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].status !== b[i].status) return false;
+  }
+  return true;
+}
+
 export default function DashboardPage() {
   const { isConnected, address, network, connect } = useWallet();
   const [copied, setCopied] = useState(false);
@@ -18,8 +32,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isConnected || !address) return;
-    const fetchData = async () => {
-      setLoading(true);
+    // isBackground marks the 30s poll: it refreshes silently without flipping
+    // `loading` (which would flash the whole list back to a spinner and force
+    // <TransactionHistory> to re-render on every cycle).
+    const fetchData = async (isBackground = false) => {
+      if (!isBackground) setLoading(true);
       setError(null);
       try {
         const [balResult, txResult] = await Promise.all([
@@ -27,15 +44,17 @@ export default function DashboardPage() {
           fetchRecentTransactions(address, network, 10),
         ]);
         setBalance(balResult.total);
-        setTransactions(txResult);
+        // Reuse the previous reference when nothing changed so React bails out
+        // of re-rendering the memoized transaction list.
+        setTransactions((prev) => (areTransactionsEqual(prev, txResult) ? prev : txResult));
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to fetch data");
       } finally {
-        setLoading(false);
+        if (!isBackground) setLoading(false);
       }
     };
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => fetchData(true), 30000);
     return () => clearInterval(interval);
   }, [isConnected, address, network]);
 
