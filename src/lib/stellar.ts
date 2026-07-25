@@ -28,17 +28,14 @@ const SOROBAN_RPC_URLS = {
 };
 
 export async function getHorizonServer(network: "PUBLIC" | "TESTNET"): Promise<Horizon.Server> {
-  const { Horizon } = await import("@stellar/stellar-sdk");
   return new Horizon.Server(HORIZON_URLS[network]);
 }
 
 export async function getSorobanRpcServer(network: "PUBLIC" | "TESTNET"): Promise<rpc.Server> {
-  const { rpc } = await import("@stellar/stellar-sdk");
   return new rpc.Server(SOROBAN_RPC_URLS[network]);
 }
 
 export async function getNetworkPassphrase(network: "PUBLIC" | "TESTNET"): Promise<string> {
-  const { Networks } = await import("@stellar/stellar-sdk");
   return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
 }
 
@@ -195,8 +192,6 @@ export async function buildAndSubmitPayment(
 ): Promise<PaymentResult> {
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
-  type AssetType = InstanceType<typeof Asset>;
 
   const result = await withSequenceRetry(
     sourceAddress,
@@ -270,7 +265,6 @@ export async function bridgeViaContract(
 
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
 
   const result = await withSequenceRetry(
     sourceAddress,
