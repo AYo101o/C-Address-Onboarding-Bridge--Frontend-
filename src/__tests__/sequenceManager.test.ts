@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
 import {
   getNextSequenceNumber,
   invalidateSequenceCache,
@@ -13,9 +13,11 @@ const mockHorizonServer = {
   loadAccount: vi.fn(),
 } as unknown as Horizon.Server;
 
-const mockSorobanRpcServer = {
+// Built via Object.create so `instanceof rpc.Server` succeeds - fetchSequenceFromNetwork
+// dispatches on instanceof, and a plain object cast never satisfies that check.
+const mockSorobanRpcServer = Object.assign(Object.create(rpc.Server.prototype), {
   getAccount: vi.fn(),
-} as unknown as rpc.Server;
+}) as rpc.Server;
 
 const testAccountId = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5V3VQ";
 
@@ -29,7 +31,7 @@ describe("sequenceManager", () => {
   describe("getNextSequenceNumber", () => {
     it("fetches from network on cache miss", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
 
@@ -39,7 +41,7 @@ describe("sequenceManager", () => {
 
     it("increments cache on second call", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const first = await getNextSequenceNumber(testAccountId, mockHorizonServer);
       const second = await getNextSequenceNumber(testAccountId, mockHorizonServer);
@@ -51,7 +53,7 @@ describe("sequenceManager", () => {
 
     it("increments multiple times within cache TTL", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const results = [];
       for (let i = 0; i < 5; i++) {
@@ -64,7 +66,7 @@ describe("sequenceManager", () => {
 
     it("refetches after cache expiry", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       // First call
       await getNextSequenceNumber(testAccountId, mockHorizonServer);
@@ -73,7 +75,7 @@ describe("sequenceManager", () => {
       vi.advanceTimersByTime(31_000);
 
       // Update mock to return different sequence
-      (mockHorizonServer.loadAccount as any).mockResolvedValue({
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
         sequenceNumber: () => "200",
       });
 
@@ -85,8 +87,8 @@ describe("sequenceManager", () => {
     });
 
     it("handles SorobanRpc server", async () => {
-      const mockAccount = { sequence: "100" };
-      (mockSorobanRpcServer.getAccount as any).mockResolvedValue(mockAccount);
+      const mockAccount = { sequenceNumber: () => "100" };
+      (mockSorobanRpcServer.getAccount as Mock).mockResolvedValue(mockAccount);
 
       const result = await getNextSequenceNumber(testAccountId, mockSorobanRpcServer);
 
@@ -98,7 +100,7 @@ describe("sequenceManager", () => {
   describe("invalidateSequenceCache", () => {
     it("causes refetch on next call", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       // Fetch and cache
       await getNextSequenceNumber(testAccountId, mockHorizonServer);
@@ -107,7 +109,7 @@ describe("sequenceManager", () => {
       invalidateSequenceCache(testAccountId);
 
       // Update mock to return different sequence
-      (mockHorizonServer.loadAccount as any).mockResolvedValue({
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
         sequenceNumber: () => "200",
       });
 
@@ -120,7 +122,7 @@ describe("sequenceManager", () => {
 
     it("only invalidates specified account", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const accountId1 = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5V3VQ";
       const accountId2 = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBTUMXBQ";
@@ -133,7 +135,7 @@ describe("sequenceManager", () => {
       invalidateSequenceCache(accountId1);
 
       // Update mock
-      (mockHorizonServer.loadAccount as any).mockResolvedValue({
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
         sequenceNumber: () => "200",
       });
 
@@ -193,7 +195,7 @@ describe("sequenceManager", () => {
   describe("withSequenceRetry", () => {
     it("calls function once on success", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const fn = vi.fn().mockResolvedValue("success");
 
@@ -205,7 +207,7 @@ describe("sequenceManager", () => {
 
     it("retries on bad_seq error", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const badSeqError = {
         response: {
@@ -223,7 +225,9 @@ describe("sequenceManager", () => {
       fn.mockRejectedValueOnce(badSeqError);
       fn.mockResolvedValueOnce("success");
 
-      const result = await withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      await vi.runAllTimersAsync();
+      const result = await promise;
 
       expect(result).toBe("success");
       expect(fn).toHaveBeenCalledTimes(2);
@@ -231,7 +235,7 @@ describe("sequenceManager", () => {
 
     it("invalidates cache between retries", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const badSeqError = {
         response: {
@@ -245,11 +249,20 @@ describe("sequenceManager", () => {
         },
       };
 
-      const fn = vi.fn();
-      fn.mockRejectedValueOnce(badSeqError);
-      fn.mockResolvedValueOnce("success");
+      // fn must actually call getSequence for this test to exercise
+      // loadAccount - a bare mockRejectedValueOnce/mockResolvedValueOnce
+      // never invokes the callback it's handed.
+      let callCount = 0;
+      const fn = vi.fn(async (getSequence: () => Promise<bigint>) => {
+        await getSequence();
+        callCount++;
+        if (callCount === 1) throw badSeqError;
+        return "success";
+      });
 
-      await withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      await vi.runAllTimersAsync();
+      await promise;
 
       // Should have called loadAccount at least twice (initial + after invalidation)
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
@@ -257,7 +270,7 @@ describe("sequenceManager", () => {
 
     it("does not retry on non-seq error", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const nonSeqError = new Error("Transaction failed: insufficient balance");
 
@@ -272,7 +285,7 @@ describe("sequenceManager", () => {
 
     it("throws after maxRetries exceeded", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const badSeqError = {
         response: {
@@ -288,9 +301,10 @@ describe("sequenceManager", () => {
 
       const fn = vi.fn().mockRejectedValue(badSeqError);
 
-      await expect(
-        withSequenceRetry(testAccountId, fn, mockHorizonServer, 2)
-      ).rejects.toEqual(badSeqError);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer, 2);
+      const expectation = expect(promise).rejects.toEqual(badSeqError);
+      await vi.runAllTimersAsync();
+      await expectation;
 
       // Should attempt maxRetries + 1 times
       expect(fn).toHaveBeenCalledTimes(3);
@@ -298,7 +312,7 @@ describe("sequenceManager", () => {
 
     it("passes getSequence function to fn", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       let capturedSequence: bigint | null = null;
 
@@ -314,7 +328,7 @@ describe("sequenceManager", () => {
 
     it("applies retry delay between attempts", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const badSeqError = {
         response: {
@@ -346,7 +360,7 @@ describe("sequenceManager", () => {
   describe("clearAllSequenceCache", () => {
     it("clears all cached sequences", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
-      (mockHorizonServer.loadAccount as any).mockResolvedValue(mockAccount);
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const accountId1 = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5V3VQ";
       const accountId2 = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBTUMXBQ";
@@ -359,7 +373,7 @@ describe("sequenceManager", () => {
       clearAllSequenceCache();
 
       // Update mock
-      (mockHorizonServer.loadAccount as any).mockResolvedValue({
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
         sequenceNumber: () => "200",
       });
 

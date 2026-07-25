@@ -140,7 +140,7 @@ function parseEnvFlags(): Record<string, boolean> {
       .filter(pair => pair.length > 0)
       .map(pair => {
         const [k, v] = pair.split('=');
-        return [k?.trim() || '', v?.trim() === 'true'];
+        return [k?.trim() || '', v?.trim() === 'true'] as [string, boolean];
       })
       .filter(([k]) => k.length > 0)
   );

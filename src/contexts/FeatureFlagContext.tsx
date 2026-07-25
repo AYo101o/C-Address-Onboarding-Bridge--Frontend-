@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { FEATURE_FLAGS, isFeatureEnabled, getDevOverrides, setDevOverride, clearDevOverride } from '@/lib/featureFlags';
 
 interface FeatureFlagContextValue {
@@ -13,16 +13,18 @@ interface FeatureFlagContextValue {
 
 const FeatureFlagContext = createContext<FeatureFlagContextValue | null>(null);
 
+const noopSubscribe = () => () => {};
+const getMountedSnapshot = () => true;
+const getMountedServerSnapshot = () => false;
+
 export function FeatureFlagProvider({ children }: { children: ReactNode }) {
   const [devOverrides, setDevOverrides] = useState<Record<string, boolean>>(
     typeof window !== 'undefined' ? getDevOverrides() : {}
   );
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-    setDevOverrides(getDevOverrides());
-  }, []);
+  // Mirrors the server's initial render (false) until after hydration, then
+  // flips to true — without a setState-in-effect, which cascading-render lint
+  // rules flag.
+  const isMounted = useSyncExternalStore(noopSubscribe, getMountedSnapshot, getMountedServerSnapshot);
 
   const isEnabled = (key: string) => isFeatureEnabled(key);
 

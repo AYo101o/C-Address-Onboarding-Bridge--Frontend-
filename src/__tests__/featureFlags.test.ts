@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   isFeatureEnabled,
@@ -22,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env = originalEnv;
+  vi.unstubAllEnvs();
 });
 
 describe('featureFlags', () => {
@@ -38,7 +40,7 @@ describe('featureFlags', () => {
     });
 
     it('respects dev override in development', () => {
-      process.env.NODE_ENV = 'development';
+      vi.stubEnv('NODE_ENV', 'development');
       setDevOverride('new_onboarding_flow', true);
       
       const result = isFeatureEnabled('new_onboarding_flow');
@@ -46,7 +48,7 @@ describe('featureFlags', () => {
     });
 
     it('returns true when rollout percentage is 100', () => {
-      process.env.NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
       
       // We need to test the rollout logic directly by creating a scenario
       // Since we can't modify FEATURE_FLAGS directly, we test with env var override
@@ -57,7 +59,7 @@ describe('featureFlags', () => {
     });
 
     it('returns default when rollout percentage is 0', () => {
-      process.env.NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
       // rolloutPercentage is 0 by default
       
       const result = isFeatureEnabled('new_onboarding_flow');
@@ -65,7 +67,7 @@ describe('featureFlags', () => {
     });
 
     it('is deterministic for same session id', () => {
-      process.env.NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
       
       const sessionId = 'test-session-123';
       const result1 = isFeatureEnabled('new_onboarding_flow', sessionId);
@@ -75,7 +77,7 @@ describe('featureFlags', () => {
     });
 
     it('env var override has priority over default', () => {
-      process.env.NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
       process.env.NEXT_PUBLIC_FEATURE_FLAGS = 'new_onboarding_flow=true';
       
       const result = isFeatureEnabled('new_onboarding_flow');
@@ -83,7 +85,7 @@ describe('featureFlags', () => {
     });
 
     it('dev override has priority over env var', () => {
-      process.env.NODE_ENV = 'development';
+      vi.stubEnv('NODE_ENV', 'development');
       process.env.NEXT_PUBLIC_FEATURE_FLAGS = 'new_onboarding_flow=true';
       setDevOverride('new_onboarding_flow', false);
       

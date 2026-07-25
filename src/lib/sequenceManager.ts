@@ -56,7 +56,7 @@ async function fetchSequenceFromNetwork(
 ): Promise<bigint> {
   if (server instanceof rpc.Server) {
     const account = await server.getAccount(accountId);
-    return BigInt(account.sequence);
+    return BigInt(account.sequenceNumber());
   } else {
     const account = await server.loadAccount(accountId);
     return BigInt(account.sequenceNumber());
