@@ -95,6 +95,7 @@ export default function OnrampPage() {
                       <button
                         key={p.id}
                         onClick={() => { setSelectedProvider(p.id); setError(null); }}
+                        aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           selectedProvider === p.id
                             ? "border-[var(--primary)] bg-[var(--primary)]/5"
