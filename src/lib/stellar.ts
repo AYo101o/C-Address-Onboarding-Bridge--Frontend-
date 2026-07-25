@@ -88,6 +88,13 @@ export function isValidStellarAddress(address: string): boolean {
   return /^[G|C][A-Z0-9]{55}$/.test(address);
 }
 
+export function isValidStellarAmount(amount: string): boolean {
+  if (!amount || typeof amount !== "string") return false;
+  if (!/^\d+(\.\d{1,7})?$/.test(amount)) return false;
+  const num = Number(amount);
+  return !isNaN(num) && num > 0;
+}
+
 export function isCAddress(address: string): boolean {
   return address.startsWith("C") && address.length === 56;
 }
@@ -193,6 +200,10 @@ export async function buildAndSubmitPayment(
   assetCode: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<PaymentResult> {
+  if (!isValidStellarAmount(amount)) {
+    throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
+  }
+
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
   const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
@@ -264,6 +275,10 @@ export async function bridgeViaContract(
   assetCode: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<PaymentResult> {
+  if (!isValidStellarAmount(amount)) {
+    throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
+  }
+
   if (!BRIDGE_CONTRACT_ID) {
     return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
   }

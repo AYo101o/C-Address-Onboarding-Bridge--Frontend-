@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, bridgeViaContract, getExplorerUrl, getAccountBalances } from "@/lib/stellar";
+import { isValidStellarAddress, isValidStellarAmount, isCAddress, bridgeViaContract, getExplorerUrl, getAccountBalances } from "@/lib/stellar";
 
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
@@ -22,7 +22,8 @@ export default function BridgePage() {
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
-  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && txStatus === "idle";
+  const validAmount = !amount || isValidStellarAmount(amount);
+  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && validAmount && txStatus === "idle";
 
   const handleUseConnected = () => {
     if (address) {
@@ -168,6 +169,11 @@ export default function BridgePage() {
                       <option>USDC</option>
                     </select>
                   </div>
+                  {!validAmount && amount && (
+                    <p className="text-xs text-[var(--error)] mt-1">
+                      Invalid amount format (must be positive, max 7 decimal places)
+                    </p>
+                  )}
                 </div>
 
                 <button
