@@ -18,6 +18,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isConnected || !address) return;
+    // Ignore results from any fetch that was in flight when this effect
+    // re-ran (e.g. a rapid network switch). Without this, a slow response
+    // for the previous network could overwrite fresh data for the current one.
+    let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -26,17 +30,22 @@ export default function DashboardPage() {
           getAccountBalances(address, network),
           fetchRecentTransactions(address, network, 10),
         ]);
+        if (cancelled) return;
         setBalance(balResult.total);
         setTransactions(txResult);
       } catch (e: unknown) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to fetch data");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchData();
     const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isConnected, address, network]);
 
   const confirmedCount = transactions.filter((t) => t.status === "confirmed").length;
