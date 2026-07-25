@@ -85,15 +85,15 @@ export async function getCurrentNetwork(): Promise<"PUBLIC" | "TESTNET"> {
 }
 
 export function isValidStellarAddress(address: string): boolean {
-  return /^[G|C][A-Z0-9]{55}$/.test(address);
+  return /^[GC][A-Z2-7]{55}$/.test(address);
 }
 
 export function isCAddress(address: string): boolean {
-  return address.startsWith("C") && address.length === 56;
+  return /^C[A-Z2-7]{55}$/.test(address);
 }
 
 export function isGAddress(address: string): boolean {
-  return address.startsWith("G") && address.length === 56;
+  return /^G[A-Z2-7]{55}$/.test(address);
 }
 
 export interface PaymentResult {
