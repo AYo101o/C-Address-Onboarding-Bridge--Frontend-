@@ -41,9 +41,31 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(updateConnection, 0);
-    const interval = setInterval(updateConnection, 3000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
+    const poll = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      updateConnection();
+    };
+
+    const timer = setTimeout(poll, 0);
+    const interval = setInterval(poll, 3000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        updateConnection();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
   }, [updateConnection]);
 
   const connect = useCallback(async () => {

@@ -35,8 +35,30 @@ export default function DashboardPage() {
       }
     };
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+
+    const poll = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchData();
+    };
+
+    const interval = setInterval(poll, 30000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchData();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
   }, [isConnected, address, network]);
 
   const confirmedCount = transactions.filter((t) => t.status === "confirmed").length;
