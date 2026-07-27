@@ -63,6 +63,19 @@ export const HORIZON_URL = {
 
 export const BRIDGE_CONTRACT_ID = process.env.NEXT_PUBLIC_BRIDGE_CONTRACT_ID || "";
 
+/**
+ * The Stellar network the app connects to. Driven by the `NEXT_PUBLIC_STELLAR_NETWORK`
+ * environment variable. Any value other than `"PUBLIC"` (exact, case-sensitive)
+ * falls back to `"TESTNET"` so misconfigured deployments never silently send
+ * real funds on mainnet.
+ *
+ * Set in your .env.local:
+ *   NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC   # mainnet
+ *   NEXT_PUBLIC_STELLAR_NETWORK=TESTNET  # testnet (default)
+ */
+export const APP_NETWORK: "PUBLIC" | "TESTNET" =
+  process.env.NEXT_PUBLIC_STELLAR_NETWORK === "PUBLIC" ? "PUBLIC" : "TESTNET";
+
 export const CEX_LIST: CexConfig[] = [
   {
     name: "Binance",

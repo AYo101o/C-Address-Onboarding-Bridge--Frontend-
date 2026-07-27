@@ -38,8 +38,8 @@ The onboarding layer for Soroban dApps. Fund any Soroban smart account (C-addres
 
    | Variable | Required | Description |
    |---|---|---|
-   | `NEXT_PUBLIC_STELLAR_NETWORK` | Yes | `TESTNET` or `PUBLIC` |
-   | `NEXT_PUBLIC_BRIDGE_CONTRACT_ID` | No | Soroban bridge contract (omits direct payment) |
+   | `NEXT_PUBLIC_STELLAR_NETWORK` | Yes | Sets the Stellar network the app connects to. Accepted values: `PUBLIC` (mainnet) or `TESTNET`. Any value other than `PUBLIC` defaults to `TESTNET`. This drives `APP_NETWORK` in `src/lib/types.ts`, which is used as the initial/disconnected network in `WalletProvider` and for all Horizon and Soroban RPC calls before a wallet connects. |
+   | `NEXT_PUBLIC_BRIDGE_CONTRACT_ID` | No | Soroban bridge contract address. When set, payments go through the bridge contract; when absent, payments are sent directly to the destination address. |
    | `NEXT_PUBLIC_MOONPAY_API_KEY` | For onramp | From [Moonpay dashboard](https://buy.moonpay.com) |
    | `NEXT_PUBLIC_TRANSAK_API_KEY` | For onramp | From [Transak dashboard](https://global.transak.com) |
 

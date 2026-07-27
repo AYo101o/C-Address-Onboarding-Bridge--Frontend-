@@ -1,19 +1,36 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Building2, Copy, Check, ExternalLink, Wallet } from "lucide-react";
+import { Building2, Copy, Check, ExternalLink, Wallet, X, Clock } from "lucide-react";
 import { CEX_LIST } from "@/lib/types";
+import { isCAddress } from "@/lib/stellar";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
+/**
+ * CexPage — CEX withdrawal routing to C-addresses.
+ *
+ * Changes in this version:
+ * - Validates the C-address input with isCAddress() (StrKey.isValidContract)
+ *   and shows an inline error when the value is not a valid Soroban contract
+ *   address. (#299)
+ * - Bridge deposit address and memo are not yet wired up; the section is
+ *   reframed as "Coming Soon" to avoid misleading users into expecting a
+ *   real deposit address. (#299)
+ * - Copy button uses the shared useCopyToClipboard hook — shows "Copy failed"
+ *   in the error state instead of a success checkmark. (#300)
+ */
 export default function CexPage() {
   const [selectedCex, setSelectedCex] = useState(CEX_LIST[0]);
   const [cAddress, setCAddress] = useState("");
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
 
-  const handleCopy = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
+  // Validate once the user has typed something.
+  const addressTouched = cAddress.length > 0;
+  const addressValid = addressTouched && isCAddress(cAddress);
+  const addressError =
+    addressTouched && !addressValid
+      ? "Invalid C-address — must be a valid Soroban contract address (starts with C)."
+      : null;
 
   const withdrawalUrl = useMemo(() => selectedCex.withdrawalUrl, [selectedCex]);
 
@@ -28,6 +45,7 @@ export default function CexPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
+          {/* Step 1 */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
             <h3 className="font-semibold mb-4">1. Select Your Exchange</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -50,47 +68,105 @@ export default function CexPage() {
             </div>
           </div>
 
+          {/* Step 2 — C-address input with validation */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
             <h3 className="font-semibold mb-4">2. Enter Your C-Address</h3>
             <p className="text-xs text-[var(--text-muted)] mb-3">
-              This is the Soroban smart account address you want to fund.
-              It will be linked to your deposit via the bridge memo.
+              Your Soroban smart account address. C-addresses start with the letter{" "}
+              <code>C</code> and are distinct from regular Stellar G-addresses.
             </p>
             <div className="relative">
               <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
               <input
                 type="text"
                 value={cAddress}
-                onChange={(e) => setCAddress(e.target.value)}
+                onChange={(e) => setCAddress(e.target.value.trim())}
                 placeholder="CABC...DEF"
-                className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                aria-label="Soroban C-address"
+                aria-invalid={addressError !== null}
+                aria-describedby={addressError ? "caddress-error" : undefined}
+                className={`w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border text-sm font-mono focus:outline-none transition-colors ${
+                  addressError
+                    ? "border-red-400 focus:border-red-500"
+                    : "border-[var(--border)] focus:border-[var(--primary)]"
+                }`}
               />
             </div>
+            {addressError && (
+              <p
+                id="caddress-error"
+                role="alert"
+                className="mt-2 text-xs text-red-500 flex items-center gap-1"
+              >
+                <X className="w-3 h-3 flex-shrink-0" />
+                {addressError}
+              </p>
+            )}
+            {addressValid && (
+              <p className="mt-2 text-xs text-green-500 flex items-center gap-1">
+                <Check className="w-3 h-3 flex-shrink-0" />
+                Valid C-address
+              </p>
+            )}
           </div>
 
+          {/* Step 3 — Withdrawal details */}
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
             <h3 className="font-semibold mb-4">3. Withdrawal Details for {selectedCex.name}</h3>
-            <div className="space-y-4">
-              {cAddress && (
-                <div>
-                  <label className="block text-xs text-[var(--text-muted)] mb-1">Your C-Address (for reference)</label>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono break-all">
-                      {cAddress}
-                    </code>
+
+            {/* Bridge deposit address — coming soon (#299) */}
+            <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-4 mb-4 flex items-start gap-3">
+              <Clock className="w-5 h-5 text-[var(--text-muted)] flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-medium mb-1">Bridge deposit address — coming soon</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Direct CEX-to-C-address routing via a Soroban bridge contract is under
+                  development. Once available, a dedicated deposit address and memo will
+                  appear here. In the meantime, use the Bridge tab to convert a G-address
+                  payment to your C-address.
+                </p>
+              </div>
+            </div>
+
+            {/* C-address copy row — only shown when address is valid */}
+            {addressValid && (
+              <div>
+                <label className="block text-xs text-[var(--text-muted)] mb-1">
+                  Your C-Address (for reference)
+                </label>
+                <div className="flex items-start gap-2">
+                  <code className="flex-1 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono break-all">
+                    {cAddress}
+                  </code>
+                  <div className="flex flex-col items-center gap-1">
                     <button
-                      onClick={() => handleCopy(cAddress, "caddress")}
+                      onClick={() => copyToClipboard(cAddress)}
+                      title={
+                        copyStatus === "error"
+                          ? "Copy failed — check clipboard permissions"
+                          : "Copy C-address"
+                      }
                       className="p-3 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors"
                     >
-                      {copiedField === "caddress" ? <Check className="w-4 h-4 text-[var(--success)]" /> : <Copy className="w-4 h-4 text-[var(--text-muted)]" />}
+                      {copyStatus === "copied" ? (
+                        <Check className="w-4 h-4 text-green-500" />
+                      ) : copyStatus === "error" ? (
+                        <X className="w-4 h-4 text-red-500" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-[var(--text-muted)]" />
+                      )}
                     </button>
+                    {copyStatus === "error" && (
+                      <span className="text-xs text-red-500 whitespace-nowrap">Copy failed</span>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Sidebar */}
         <div className="space-y-4">
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
             <h3 className="font-semibold mb-3">Exchange Details</h3>
@@ -115,19 +191,20 @@ export default function CexPage() {
             <ol className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">
                 <span className="text-[var(--primary-light)] font-medium">1.</span>
-                <span>Withdraw from your CEX to the bridge address</span>
+                <span>Enter your Soroban C-address above</span>
               </li>
               <li className="flex gap-2">
                 <span className="text-[var(--primary-light)] font-medium">2.</span>
-                <span>The Soroban bridge contract detects the deposit</span>
+                <span>
+                  Bridge deposit routing is coming soon — you will withdraw from your CEX
+                  to a bridge address linked to your C-address
+                </span>
               </li>
               <li className="flex gap-2">
                 <span className="text-[var(--primary-light)] font-medium">3.</span>
-                <span>Funds are routed to your C-address automatically</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-[var(--primary-light)] font-medium">4.</span>
-                <span>Use your Soroban dApp directly</span>
+                <span>
+                  Until then, use the Bridge tab to fund your C-address via a G-address
+                </span>
               </li>
             </ol>
           </div>

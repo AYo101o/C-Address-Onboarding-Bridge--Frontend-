@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { connectWallet, checkConnection, getWalletAddress, getCurrentNetwork } from "@/lib/stellar";
-import type { StellarNetwork } from "@/lib/types";
+import { APP_NETWORK, type StellarNetwork } from "@/lib/types";
 
 interface WalletContextType {
   address: string | null;
@@ -24,7 +24,10 @@ const BACKOFF_THRESHOLD_MS = 30000;
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
-  const [network, setNetwork] = useState<StellarNetwork>("TESTNET");
+  // Use APP_NETWORK as the initial/disconnected network so the app targets the
+  // correct Horizon and Soroban RPC endpoints before a wallet is connected.
+  // NEXT_PUBLIC_STELLAR_NETWORK drives this value at build time. (#302)
+  const [network, setNetwork] = useState<StellarNetwork>(APP_NETWORK);
   const [isConnecting, setIsConnecting] = useState(false);
 
   const updateConnection = useCallback(async () => {

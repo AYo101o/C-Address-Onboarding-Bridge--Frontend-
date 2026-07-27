@@ -289,7 +289,11 @@ async function buildSignAndSubmit(
   server: Horizon.Server,
   passphrase: string
 ): Promise<PaymentResult> {
-  const { TransactionBuilder, Operation, BASE_FEE } = await import("@stellar/stellar-sdk");
+  const { TransactionBuilder, Operation } = await import("@stellar/stellar-sdk");
+
+  // Fetch a dynamic fee bid (2× base fee, capped at 10 000 stroops) so the
+  // transaction is not rejected during surge-pricing windows. (#301)
+  const fee = await getRecommendedFee(network);
 
   return withSequenceRetry(
     sourceAddress,
@@ -298,7 +302,7 @@ async function buildSignAndSubmit(
       const account = new Account(sourceAddress, (sequence - 1n).toString());
 
       const tx = new TransactionBuilder(account, {
-        fee: BASE_FEE,
+        fee,
         networkPassphrase: passphrase,
       })
         .addOperation(
@@ -322,11 +326,27 @@ async function buildSignAndSubmit(
       const signedXDR = (signedResult as { signedTxXdr: string }).signedTxXdr;
       const signedTx = TransactionBuilder.fromXDR(signedXDR, passphrase);
 
-      const submitResult = await server.submitTransaction(signedTx);
-      return {
-        hash: submitResult.hash,
-        successful: submitResult.successful,
-      };
+      try {
+        const submitResult = await server.submitTransaction(signedTx);
+        return {
+          hash: submitResult.hash,
+          successful: submitResult.successful,
+        };
+      } catch (submitError: unknown) {
+        // Surface tx_insufficient_fee as a human-readable message so callers
+        // can prompt the user to retry rather than showing a raw API error. (#301)
+        const err = submitError as {
+          response?: { data?: { extras?: { result_codes?: { transaction?: string } } } };
+        };
+        const txCode = err.response?.data?.extras?.result_codes?.transaction;
+        if (txCode === "tx_insufficient_fee") {
+          throw new Error(
+            "Transaction fee too low for current network load. The network is experiencing " +
+              "surge pricing. Please try again — a higher fee will be used automatically.",
+          );
+        }
+        throw submitError;
+      }
     },
     server
   );
@@ -425,4 +445,30 @@ export function getExplorerUrl(
 
 export function getAccountMinimumBalance(): string {
   return "1.0";
+}
+
+/**
+ * Fetch the current recommended fee from the Horizon fee-stats endpoint and
+ * return a fee bid that is 2× the network base fee, capped at 10 000 stroops.
+ *
+ * Using a dynamic fee instead of the hardcoded BASE_FEE constant avoids
+ * `tx_insufficient_fee` rejections during surge-pricing windows (when the
+ * network raises the minimum fee above 100 stroops). (#301)
+ *
+ * @param network - "PUBLIC" or "TESTNET"
+ * @returns Fee in stroops as a string (e.g. "200")
+ */
+export async function getRecommendedFee(network: StellarNetwork): Promise<string> {
+  const MAX_FEE_STROOPS = 10_000;
+  try {
+    const server = await getHorizonServer(network);
+    // fetchBaseFee() returns a number representing the current minimum fee in stroops.
+    const baseFee = await server.fetchBaseFee();
+    const bid = Math.min(baseFee * 2, MAX_FEE_STROOPS);
+    return String(bid);
+  } catch {
+    // Fall back to the hardcoded BASE_FEE constant if the fee-stats call fails
+    // so the transaction is still submitted rather than silently blocked.
+    return BASE_FEE;
+  }
 }
