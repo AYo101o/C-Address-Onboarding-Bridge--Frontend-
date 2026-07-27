@@ -13,6 +13,7 @@ import {
   Horizon,
   rpc,
   Account,
+  StrKey,
 } from "@stellar/stellar-sdk";
 import { BRIDGE_CONTRACT_ID } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
@@ -28,17 +29,14 @@ const SOROBAN_RPC_URLS = {
 };
 
 export async function getHorizonServer(network: "PUBLIC" | "TESTNET"): Promise<Horizon.Server> {
-  const { Horizon } = await import("@stellar/stellar-sdk");
   return new Horizon.Server(HORIZON_URLS[network]);
 }
 
 export async function getSorobanRpcServer(network: "PUBLIC" | "TESTNET"): Promise<rpc.Server> {
-  const { rpc } = await import("@stellar/stellar-sdk");
   return new rpc.Server(SOROBAN_RPC_URLS[network]);
 }
 
 export async function getNetworkPassphrase(network: "PUBLIC" | "TESTNET"): Promise<string> {
-  const { Networks } = await import("@stellar/stellar-sdk");
   return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
 }
 
@@ -84,8 +82,12 @@ export async function getCurrentNetwork(): Promise<"PUBLIC" | "TESTNET"> {
   }
 }
 
+// Validate against the SDK's StrKey, which enforces the correct base32
+// alphabet (A-Z, 2-7 — no 0/1/8/9) and the trailing CRC16 checksum. A
+// hand-rolled regex cannot verify the checksum and, as [G|C] showed, is easy
+// to get subtly wrong (that character class also accepted a leading '|').
 export function isValidStellarAddress(address: string): boolean {
-  return /^[G|C][A-Z0-9]{55}$/.test(address);
+  return StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address);
 }
 
 export function isValidStellarAmount(amount: string): boolean {
@@ -96,11 +98,11 @@ export function isValidStellarAmount(amount: string): boolean {
 }
 
 export function isCAddress(address: string): boolean {
-  return address.startsWith("C") && address.length === 56;
+  return StrKey.isValidContract(address);
 }
 
 export function isGAddress(address: string): boolean {
-  return address.startsWith("G") && address.length === 56;
+  return StrKey.isValidEd25519PublicKey(address);
 }
 
 export interface PaymentResult {
@@ -145,22 +147,85 @@ interface HorizonPayment {
   transaction_hash?: string;
 }
 
-export async function getAccountBalances(
+/**
+ * Short-lived shared cache for account balances, keyed on `address:network`.
+ *
+ * Both the Bridge page ("Use connected wallet" check) and the Dashboard
+ * (mount + 30s poll) fetch balances for the same connected address. Without a
+ * shared cache, navigating between these pages triggers a fresh Horizon
+ * round-trip even when the data was fetched seconds earlier.
+ *
+ * The TTL is deliberately short: staleness is bounded to BALANCE_CACHE_TTL_MS,
+ * and it stays well under the Dashboard's 30s poll interval so the poll still
+ * refetches fresh data on every tick. Entries store the in-flight promise, so
+ * concurrent callers within the window share a single request; failed fetches
+ * are evicted so the fallback value is never served from cache.
+ */
+const BALANCE_CACHE_TTL_MS = 10_000; // 10 seconds
+
+interface BalanceCacheEntry {
+  promise: Promise<AccountBalances>;
+  fetchedAt: number;
+}
+
+const balanceCache = new Map<string, BalanceCacheEntry>();
+
+async function loadAccountBalances(
   address: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<AccountBalances> {
   const server = await getHorizonServer(network);
+  const account = await server.loadAccount(address);
+  const balances = (account.balances as HorizonBalance[]).map((b) => ({
+    asset: b.asset_type === "native" ? "XLM" : (b.asset_code || "unknown"),
+    amount: b.balance,
+  }));
+  const total = balances.find((b) => b.asset === "XLM")?.amount || "0";
+  return { total, balances };
+}
+
+async function withBalanceFallback(
+  promise: Promise<AccountBalances>
+): Promise<AccountBalances> {
   try {
-    const account = await server.loadAccount(address);
-    const balances = (account.balances as HorizonBalance[]).map((b) => ({
-      asset: b.asset_type === "native" ? "XLM" : (b.asset_code || "unknown"),
-      amount: b.balance,
-    }));
-    const total = balances.find((b) => b.asset === "XLM")?.amount || "0";
-    return { total, balances };
+    return await promise;
   } catch {
     return { total: "0", balances: [] };
   }
+}
+
+export async function getAccountBalances(
+  address: string,
+  network: "PUBLIC" | "TESTNET"
+): Promise<AccountBalances> {
+  const key = `${address}:${network}`;
+  const now = Date.now();
+
+  const cached = balanceCache.get(key);
+  if (cached && now - cached.fetchedAt < BALANCE_CACHE_TTL_MS) {
+    return withBalanceFallback(cached.promise);
+  }
+
+  const promise = loadAccountBalances(address, network);
+  balanceCache.set(key, { promise, fetchedAt: now });
+
+  // Evict on failure so the "0 balance" fallback is not served from cache and
+  // the next call retries against the network.
+  promise.catch(() => {
+    if (balanceCache.get(key)?.promise === promise) {
+      balanceCache.delete(key);
+    }
+  });
+
+  return withBalanceFallback(promise);
+}
+
+/**
+ * Clears the account-balances cache. Primarily for tests; call sites rely on
+ * the short TTL rather than manual invalidation.
+ */
+export function clearAccountBalancesCache(): void {
+  balanceCache.clear();
 }
 
 export async function fetchRecentTransactions(
@@ -206,8 +271,6 @@ export async function buildAndSubmitPayment(
 
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
-  type AssetType = InstanceType<typeof Asset>;
 
   const result = await withSequenceRetry(
     sourceAddress,
@@ -285,7 +348,6 @@ export async function bridgeViaContract(
 
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
 
   const result = await withSequenceRetry(
     sourceAddress,
