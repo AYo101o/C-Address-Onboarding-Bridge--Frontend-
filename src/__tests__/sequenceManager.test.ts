@@ -29,13 +29,13 @@ beforeEach(() => {
 
 describe("sequenceManager", () => {
   describe("getNextSequenceNumber", () => {
-    it("fetches from network on cache miss", async () => {
+    it("fetches from network on cache miss and returns incremented sequence for transaction", async () => {
       const mockAccount = { sequenceNumber: () => "100" };
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
 
-      expect(result).toBe(100n);
+      expect(result).toBe(101n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledWith(testAccountId);
     });
 
@@ -46,8 +46,8 @@ describe("sequenceManager", () => {
       const first = await getNextSequenceNumber(testAccountId, mockHorizonServer);
       const second = await getNextSequenceNumber(testAccountId, mockHorizonServer);
 
-      expect(first).toBe(100n);
-      expect(second).toBe(101n);
+      expect(first).toBe(101n);
+      expect(second).toBe(102n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(1);
     });
 
@@ -60,7 +60,7 @@ describe("sequenceManager", () => {
         results.push(await getNextSequenceNumber(testAccountId, mockHorizonServer));
       }
 
-      expect(results).toEqual([100n, 101n, 102n, 103n, 104n]);
+      expect(results).toEqual([101n, 102n, 103n, 104n, 105n]);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(1);
     });
 
@@ -82,7 +82,7 @@ describe("sequenceManager", () => {
       // Second call after TTL should refetch
       const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
 
-      expect(result).toBe(200n);
+      expect(result).toBe(201n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
     });
 
@@ -92,7 +92,7 @@ describe("sequenceManager", () => {
 
       const result = await getNextSequenceNumber(testAccountId, mockSorobanRpcServer);
 
-      expect(result).toBe(100n);
+      expect(result).toBe(101n);
       expect(mockSorobanRpcServer.getAccount).toHaveBeenCalledWith(testAccountId);
     });
   });
@@ -116,7 +116,7 @@ describe("sequenceManager", () => {
       // Next call should refetch
       const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
 
-      expect(result).toBe(200n);
+      expect(result).toBe(201n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
     });
 
@@ -141,11 +141,11 @@ describe("sequenceManager", () => {
 
       // Next call for accountId1 should refetch
       const result1 = await getNextSequenceNumber(accountId1, mockHorizonServer);
-      expect(result1).toBe(200n);
+      expect(result1).toBe(201n);
 
-      // Next call for accountId2 should use cache (101n from cached 100n)
+      // Next call for accountId2 should use cache (102n from cached 101n)
       const result2 = await getNextSequenceNumber(accountId2, mockHorizonServer);
-      expect(result2).toBe(101n);
+      expect(result2).toBe(102n);
     });
   });
 
@@ -323,7 +323,7 @@ describe("sequenceManager", () => {
 
       await withSequenceRetry(testAccountId, fn, mockHorizonServer);
 
-      expect(capturedSequence).toBe(100n);
+      expect(capturedSequence).toBe(101n);
     });
 
     it("applies retry delay between attempts", async () => {
@@ -381,8 +381,8 @@ describe("sequenceManager", () => {
       const result1 = await getNextSequenceNumber(accountId1, mockHorizonServer);
       const result2 = await getNextSequenceNumber(accountId2, mockHorizonServer);
 
-      expect(result1).toBe(200n);
-      expect(result2).toBe(200n);
+      expect(result1).toBe(201n);
+      expect(result2).toBe(201n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(4);
     });
   });

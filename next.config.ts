@@ -8,6 +8,10 @@ const withBundleAnalyzer = bundleAnalyzer({
 
 const initialJsBudgetBytes = Number(process.env.NEXT_PUBLIC_INITIAL_JS_BUDGET_KB ?? "100") * 1024;
 
+// In CI, flip webpack performance hints from "warning" to "error"
+// so that bundle-size budget violations fail the build.
+const enforceBudget = process.env.ENFORCE_BUDGET === "true";
+
 const nextConfig: NextConfig = {
   turbopack: {},
   experimental: {
@@ -19,7 +23,12 @@ const nextConfig: NextConfig = {
         ...config.performance,
         maxEntrypointSize: initialJsBudgetBytes,
         maxAssetSize: Math.max(initialJsBudgetBytes, 200 * 1024),
-        hints: process.env.NODE_ENV === "production" ? "warning" : false,
+        hints:
+          process.env.NODE_ENV === "production"
+            ? enforceBudget
+              ? "error"
+              : "warning"
+            : false,
       };
     }
 

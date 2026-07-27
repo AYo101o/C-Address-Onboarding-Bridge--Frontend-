@@ -28,38 +28,12 @@ import { useFeatureFlags } from "@/contexts/FeatureFlagContext";
  *    - Reset buttons use `aria-label={`Reset ${flag.name} to default`}`.
  */
 export function FeatureFlagPanel() {
-  const { flags, devOverrides, isEnabled, setOverride, clearOverride } = useFeatureFlags();
+   const { flags, devOverrides, isEnabled, setOverride, clearOverride } = useFeatureFlags();
   const [isOpen, setIsOpen] = useState(false);
 
-  const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  if (process.env.NODE_ENV !== 'development') return null;
 
-  useEffect(() => {
-    if (isOpen) {
-      // Move focus into the dialog on open for keyboard & screen reader accessibility
-      panelRef.current?.focus();
-
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setIsOpen(false);
-          toggleButtonRef.current?.focus();
-        }
-      };
-
-      window.addEventListener("keydown", handleKeyDown);
-      return () => {
-        window.removeEventListener("keydown", handleKeyDown);
-      };
-    }
-  }, [isOpen]);
-
-  if (process.env.NODE_ENV !== "development") return null;
-
-  const handleToggleOpen = () => {
-    setIsOpen((prev) => !prev);
-  };
-
+ 
   return (
     <>
       {/* Toggle button — fixed bottom-right */}
