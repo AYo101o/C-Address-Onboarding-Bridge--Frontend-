@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { connectWallet, checkConnection, getWalletAddress, getCurrentNetwork } from "@/lib/stellar";
 
 interface WalletContextType {
@@ -23,6 +23,12 @@ const WalletContext = createContext<WalletContextType>({
   disconnect: () => {},
 });
 
+/** Polling intervals in milliseconds. */
+const FAST_INTERVAL = 3000;
+const SLOW_INTERVAL = 10000;
+/** Time before backing off from fast to slow interval. */
+const BACKOFF_THRESHOLD_MS = 30000;
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [network, setNetwork] = useState<"PUBLIC" | "TESTNET">("TESTNET");
@@ -39,12 +45,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setAddress(null);
     }
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(updateConnection, 0);
-    const interval = setInterval(updateConnection, 3000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
-  }, [updateConnection]);
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
@@ -63,6 +63,70 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const disconnect = useCallback(() => {
     setAddress(null);
   }, []);
+
+  // Polling with backoff + visibility awareness
+  useEffect(() => {
+    let fastTimer: ReturnType<typeof setTimeout> | null = null;
+    let slowTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoffTimer: ReturnType<typeof setTimeout> | null = null;
+    let isFast = true;
+
+    const clearAllTimers = () => {
+      if (fastTimer) clearTimeout(fastTimer);
+      if (slowTimer) clearTimeout(slowTimer);
+      if (backoffTimer) clearTimeout(backoffTimer);
+    };
+
+    const scheduleNext = () => {
+      clearAllTimers();
+      const delay = isFast ? FAST_INTERVAL : SLOW_INTERVAL;
+      const timer = setTimeout(() => {
+        updateConnection().finally(scheduleNext);
+      }, delay);
+      if (isFast) {
+        fastTimer = timer;
+      } else {
+        slowTimer = timer;
+      }
+    };
+
+    const startBackoff = () => {
+      if (backoffTimer) clearTimeout(backoffTimer);
+      backoffTimer = setTimeout(() => {
+        isFast = false;
+        // reschedule immediately so the next tick uses the slower interval
+        scheduleNext();
+      }, BACKOFF_THRESHOLD_MS);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab hidden: pause all polling
+        clearAllTimers();
+      } else {
+        // Tab visible again: reset to fast interval, check immediately,
+        // then start the backoff timer fresh.
+        isFast = true;
+        updateConnection().finally(() => {
+          startBackoff();
+          scheduleNext();
+        });
+      }
+    };
+
+    // Initial check + start fast polling
+    updateConnection().finally(() => {
+      startBackoff();
+      scheduleNext();
+    });
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearAllTimers();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [updateConnection]);
 
   return (
     <WalletContext.Provider
