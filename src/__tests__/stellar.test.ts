@@ -77,6 +77,37 @@ describe("isValidStellarAddress", () => {
   });
 });
 
+describe("isValidStellarAmount", () => {
+  it("accepts valid integers", () => {
+    expect(isValidStellarAmount("100")).toBe(true);
+    expect(isValidStellarAmount("1")).toBe(true);
+  });
+
+  it("accepts amounts with up to 7 decimal places", () => {
+    expect(isValidStellarAmount("0.1")).toBe(true);
+    expect(isValidStellarAmount("0.1234567")).toBe(true);
+    expect(isValidStellarAmount("10.0000001")).toBe(true);
+  });
+
+  it("rejects amounts with more than 7 decimal places", () => {
+    expect(isValidStellarAmount("0.12345678")).toBe(false);
+    expect(isValidStellarAmount("1.000000001")).toBe(false);
+  });
+
+  it("rejects zero and negative amounts", () => {
+    expect(isValidStellarAmount("0")).toBe(false);
+    expect(isValidStellarAmount("0.0000000")).toBe(false);
+    expect(isValidStellarAmount("-5")).toBe(false);
+  });
+
+  it("rejects invalid formats", () => {
+    expect(isValidStellarAmount("")).toBe(false);
+    expect(isValidStellarAmount("abc")).toBe(false);
+    expect(isValidStellarAmount("1.2.3")).toBe(false);
+    expect(isValidStellarAmount("1.")).toBe(false);
+  });
+});
+
 describe("isCAddress", () => {
   it("detects a valid C-address", () => {
     expect(isCAddress(C_ADDRESS)).toBe(true);
