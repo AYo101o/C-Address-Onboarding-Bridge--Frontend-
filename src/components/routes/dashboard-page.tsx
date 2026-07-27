@@ -8,6 +8,20 @@ import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl } from "@/lib/stellar";
 import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
 
+// Content check for the 30s poll: transaction fields are derived from
+// immutable Horizon records, so the only meaningful changes are which
+// transactions exist (id) and their status. When nothing changed we keep the
+// previous array reference so memoized <TransactionHistory> can skip its
+// re-render entirely.
+function areTransactionsEqual(a: BridgeTransaction[], b: BridgeTransaction[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].status !== b[i].status) return false;
+  }
+  return true;
+}
+
 export default function DashboardPage() {
   const { isConnected, address, network, connect } = useWallet();
   const [copied, setCopied] = useState(false);
@@ -18,6 +32,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isConnected || !address) return;
+    // Ignore results from any fetch that was in flight when this effect
+    // re-ran (e.g. a rapid network switch). Without this, a slow response
+    // for the previous network could overwrite fresh data for the current one.
+    let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -26,17 +44,24 @@ export default function DashboardPage() {
           getAccountBalances(address, network),
           fetchRecentTransactions(address, network, 10),
         ]);
+        if (cancelled) return;
         setBalance(balResult.total);
-        setTransactions(txResult);
+        // Reuse the previous reference when nothing changed so React bails out
+        // of re-rendering the memoized transaction list.
+        setTransactions((prev) => (areTransactionsEqual(prev, txResult) ? prev : txResult));
       } catch (e: unknown) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to fetch data");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchData();
     const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isConnected, address, network]);
 
   const confirmedCount = transactions.filter((t) => t.status === "confirmed").length;
