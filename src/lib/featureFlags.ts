@@ -53,6 +53,12 @@ export function isFeatureEnabled(
   const flag = FEATURE_FLAGS.find(f => f.key === key);
   if (!flag) return false;
 
+  // SSR guard: on the server there is no session to hash against, so we fall
+  // back to the flag's defaultEnabled value immediately.  This prevents the
+  // string "server" from being hashed into an arbitrary rollout bucket that
+  // differs from the client's result and causing a hydration mismatch. (#291)
+  if (typeof window === 'undefined') return flag.defaultEnabled;
+
   if (flag.rolloutPercentage === 100) return true;
   if (flag.rolloutPercentage === 0) return flag.defaultEnabled;
 
