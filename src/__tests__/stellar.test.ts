@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { isValidStellarAddress, isCAddress, isGAddress } from "@/lib/stellar";
 
-const G_ADDRESS = "GAIUIQ7G3TMN53Z2Y3Y5CJI7Q7ZQJX4W5F5N5Z5Q5Z5Q5Z5Q5Z5Q5Z5A";
-const C_ADDRESS = "CAIUIQ7G3TMN53Z2Y3Y5CJI7Q7ZQJX4W5F5N5Z5Q5Z5Q5Z5Q5Z5Q5Z5A";
+const gKeypair = Keypair.random();
+const G_ADDRESS = gKeypair.publicKey();
+const C_ADDRESS = StrKey.encodeContract(new Uint8Array(32));
 
 describe("isValidStellarAddress", () => {
   it("accepts valid G-address", () => {
@@ -24,6 +26,11 @@ describe("isValidStellarAddress", () => {
   it("rejects invalid prefix", () => {
     const addr = "X" + G_ADDRESS.slice(1);
     expect(isValidStellarAddress(addr)).toBe(false);
+  });
+
+  it("rejects address with wrong checksum", () => {
+    const tampered = G_ADDRESS.slice(0, -1) + "A";
+    expect(isValidStellarAddress(tampered)).toBe(false);
   });
 });
 

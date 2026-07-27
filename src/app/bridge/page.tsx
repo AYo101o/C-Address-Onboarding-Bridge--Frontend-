@@ -22,7 +22,8 @@ export default function BridgePage() {
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
-  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && txStatus === "idle";
+  const validAmount = !!amount && /^\d+(\.\d{1,2})?$/.test(amount);
+  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && validAmount && txStatus === "idle";
 
   const handleUseConnected = () => {
     if (address) {
@@ -89,21 +90,23 @@ export default function BridgePage() {
                   <label className="block text-sm font-medium mb-2">From (G-address)</label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                    <input
-                      type="text"
-                      value={fromAddress}
-                      onChange={(e) => {
-                        setFromAddress(e.target.value);
-                        setSourceBalance(null);
-                      }}
-                      placeholder={isConnected ? address! : "GABC...DEF or connect wallet"}
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                      disabled={txStatus !== "idle"}
-                    />
-                  </div>
-                  {!validFrom && fromAddress && (
-                    <p className="text-xs text-[var(--error)] mt-1">Invalid Stellar address</p>
-                  )}
+                     <input
+                       type="text"
+                       value={fromAddress}
+                       onChange={(e) => {
+                         setFromAddress(e.target.value);
+                         setSourceBalance(null);
+                       }}
+                       placeholder={isConnected ? address! : "GABC...DEF or connect wallet"}
+                       aria-invalid={!validFrom && !!fromAddress}
+                       aria-describedby={!validFrom && fromAddress ? "from-address-error" : undefined}
+                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                       disabled={txStatus !== "idle"}
+                     />
+                   </div>
+                   {!validFrom && fromAddress && (
+                     <p id="from-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid Stellar address</p>
+                   )}
                   {isConnected && (
                     <button
                       onClick={handleUseConnected}
@@ -129,46 +132,53 @@ export default function BridgePage() {
                   <label className="block text-sm font-medium mb-2">To (C-address)</label>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                    <input
-                      type="text"
-                      value={toAddress}
-                      onChange={(e) => setToAddress(e.target.value)}
-                      placeholder="CABC...DEF"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                      disabled={txStatus !== "idle"}
-                    />
-                  </div>
-                  {!validTo && toAddress && (
-                    <p className="text-xs text-[var(--error)] mt-1">
-                      Invalid C-address (must start with C and be 56 characters)
-                    </p>
-                  )}
+                     <input
+                       type="text"
+                       value={toAddress}
+                       onChange={(e) => setToAddress(e.target.value)}
+                       placeholder="CABC...DEF"
+                       aria-invalid={!validTo && !!toAddress}
+                       aria-describedby={!validTo && toAddress ? "to-address-error" : undefined}
+                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                       disabled={txStatus !== "idle"}
+                     />
+                   </div>
+                   {!validTo && toAddress && (
+                     <p id="to-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">
+                       Invalid C-address (must start with C and be 56 characters)
+                     </p>
+                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Amount</label>
-                  <div className="flex gap-3">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                        disabled={txStatus !== "idle"}
-                      />
-                    </div>
-                    <select
-                      value={asset}
-                      onChange={(e) => setAsset(e.target.value)}
-                      className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                      disabled={txStatus !== "idle"}
-                    >
-                      <option>XLM</option>
-                      <option>USDC</option>
-                    </select>
-                  </div>
-                </div>
+                 <div>
+                   <label className="block text-sm font-medium mb-2">Amount</label>
+                   <div className="flex gap-3">
+                     <div className="relative flex-1">
+                       <input
+                         type="text"
+                         value={amount}
+                         onChange={(e) => setAmount(e.target.value)}
+                         placeholder="0.00"
+                         aria-invalid={!!amount && !validAmount}
+                         aria-describedby={!validAmount && amount ? "amount-error" : undefined}
+                         className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                         disabled={txStatus !== "idle"}
+                       />
+                     </div>
+                     <select
+                       value={asset}
+                       onChange={(e) => setAsset(e.target.value)}
+                       className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                       disabled={txStatus !== "idle"}
+                     >
+                       <option>XLM</option>
+                       <option>USDC</option>
+                     </select>
+                   </div>
+                   {!validAmount && amount && (
+                     <p id="amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
+                   )}
+                 </div>
 
                 <button
                   onClick={handleSubmit}

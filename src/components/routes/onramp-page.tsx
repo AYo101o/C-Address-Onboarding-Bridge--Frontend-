@@ -123,16 +123,18 @@ export default function OnrampPage() {
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
-                      type="text"
-                      value={cAddress}
-                      onChange={(e) => setCAddress(e.target.value)}
-                      placeholder="CABC...DEF"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                    />
-                  </div>
-                  {!validAddress && cAddress && (
-                    <p className="text-xs text-[var(--error)] mt-1">Invalid C-address (must start with C, 56 characters)</p>
-                  )}
+                       type="text"
+                       value={cAddress}
+                       onChange={(e) => setCAddress(e.target.value)}
+                       placeholder="CABC...DEF"
+                       aria-invalid={!validAddress && !!cAddress}
+                       aria-describedby={!validAddress && cAddress ? "c-address-error" : undefined}
+                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                     />
+                   </div>
+                   {!validAddress && cAddress && (
+                     <p id="c-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid C-address (must start with C, 56 characters)</p>
+                   )}
                 </div>
 
                 <div>
@@ -140,16 +142,18 @@ export default function OnrampPage() {
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
-                      type="text"
-                      value={fiatAmount}
-                      onChange={(e) => setFiatAmount(e.target.value)}
-                      placeholder="100.00"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                    />
-                  </div>
-                  {!validAmount && fiatAmount && (
-                    <p className="text-xs text-[var(--error)] mt-1">Invalid amount format</p>
-                  )}
+                       type="text"
+                       value={fiatAmount}
+                       onChange={(e) => setFiatAmount(e.target.value)}
+                       placeholder="100.00"
+                       aria-invalid={!validAmount && !!fiatAmount}
+                       aria-describedby={!validAmount && fiatAmount ? "fiat-amount-error" : undefined}
+                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                     />
+                   </div>
+                   {!validAmount && fiatAmount && (
+                     <p id="fiat-amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
+                   )}
                 </div>
 
                 <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">

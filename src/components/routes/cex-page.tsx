@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { Building2, Copy, Check, ExternalLink, Wallet } from "lucide-react";
 import { CEX_LIST } from "@/lib/types";
+import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 
 export default function CexPage() {
   const [selectedCex, setSelectedCex] = useState(CEX_LIST[0]);
   const [cAddress, setCAddress] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const validCAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -56,15 +59,20 @@ export default function CexPage() {
               It will be linked to your deposit via the bridge memo.
             </p>
             <div className="relative">
-              <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-              <input
-                type="text"
-                value={cAddress}
-                onChange={(e) => setCAddress(e.target.value)}
-                placeholder="CABC...DEF"
-                className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-              />
-            </div>
+               <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+               <input
+                 type="text"
+                 value={cAddress}
+                 onChange={(e) => setCAddress(e.target.value)}
+                 placeholder="CABC...DEF"
+                 aria-invalid={!!cAddress && !validCAddress}
+                 aria-describedby={!validCAddress && cAddress ? "cex-c-address-error" : undefined}
+                 className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+               />
+             </div>
+             {!validCAddress && cAddress && (
+               <p id="cex-c-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid C-address (must start with C, 56 characters)</p>
+             )}
           </div>
 
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">

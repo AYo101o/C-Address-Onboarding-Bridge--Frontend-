@@ -13,6 +13,7 @@ import {
   Horizon,
   rpc,
   Account,
+  StrKey,
 } from "@stellar/stellar-sdk";
 import { BRIDGE_CONTRACT_ID } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
@@ -85,15 +86,15 @@ export async function getCurrentNetwork(): Promise<"PUBLIC" | "TESTNET"> {
 }
 
 export function isValidStellarAddress(address: string): boolean {
-  return /^[G|C][A-Z0-9]{55}$/.test(address);
+  return StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address);
 }
 
 export function isCAddress(address: string): boolean {
-  return address.startsWith("C") && address.length === 56;
+  return StrKey.isValidContract(address);
 }
 
 export function isGAddress(address: string): boolean {
-  return address.startsWith("G") && address.length === 56;
+  return StrKey.isValidEd25519PublicKey(address);
 }
 
 export interface PaymentResult {
