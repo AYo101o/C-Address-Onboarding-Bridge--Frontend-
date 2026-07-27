@@ -15,27 +15,23 @@ import {
   Account,
   StrKey,
 } from "@stellar/stellar-sdk";
-import { BRIDGE_CONTRACT_ID, type StellarNetwork } from "./types";
+import { BRIDGE_CONTRACT_ID, HORIZON_URL, SOROBAN_RPC_URL, type StellarNetwork } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
-
-const HORIZON_URLS: Record<StellarNetwork, string> = {
-  PUBLIC: "https://horizon.stellar.org",
-  TESTNET: "https://horizon-testnet.stellar.org",
-};
-
-const SOROBAN_RPC_URLS: Record<StellarNetwork, string> = {
-  PUBLIC: "https://soroban-rpc.stellar.org",
-  TESTNET: "https://soroban-rpc-testnet.stellar.org",
-};
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
   const { Horizon } = await import("@stellar/stellar-sdk");
-  return new Horizon.Server(HORIZON_URLS[network]);
+  return new Horizon.Server(HORIZON_URL[network]);
 }
 
 export async function getSorobanRpcServer(network: StellarNetwork): Promise<rpc.Server> {
+  const url = SOROBAN_RPC_URL[network];
+  if (!url) {
+    throw new Error(
+      `No Soroban RPC URL configured for ${network}. Set NEXT_PUBLIC_SOROBAN_RPC_URL_${network} in your environment.`
+    );
+  }
   const { rpc } = await import("@stellar/stellar-sdk");
-  return new rpc.Server(SOROBAN_RPC_URLS[network]);
+  return new rpc.Server(url);
 }
 
 export async function getNetworkPassphrase(network: StellarNetwork): Promise<string> {
@@ -332,6 +328,32 @@ async function buildSignAndSubmit(
   );
 }
 
+/**
+ * Resolves the Asset a payment should use, validating any non-native
+ * trustline against the source account. Shared by buildAndSubmitPayment and
+ * bridgeViaContract so neither can silently substitute a different asset
+ * than the one the caller (and UI) asked for.
+ */
+async function resolveAsset(
+  server: Horizon.Server,
+  sourceAddress: string,
+  assetCode: string
+): Promise<Asset> {
+  const { Asset } = await import("@stellar/stellar-sdk");
+
+  if (assetCode === "XLM") {
+    return Asset.native();
+  }
+
+  const account = await server.loadAccount(sourceAddress);
+  const balances = account.balances as HorizonBalance[];
+  const matchingBalance = balances.find((b) => b.asset_code === assetCode);
+  if (!matchingBalance) {
+    throw new Error(`No ${assetCode} trustline found for this account`);
+  }
+  return new Asset(assetCode, matchingBalance.asset_issuer);
+}
+
 export async function buildAndSubmitPayment(
   sourceAddress: string,
   destinationAddress: string,
@@ -341,22 +363,7 @@ export async function buildAndSubmitPayment(
 ): Promise<PaymentResult> {
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { Asset } = await import("@stellar/stellar-sdk");
-
-  // Resolve the asset, validating any non-native trustline against the account
-  const horizonAccount = await server.loadAccount(sourceAddress);
-  let asset: Asset;
-
-  if (assetCode === "XLM") {
-    asset = Asset.native();
-  } else {
-    const balances = horizonAccount.balances as HorizonBalance[];
-    const matchingBalance = balances.find((b) => b.asset_code === assetCode);
-    if (!matchingBalance) {
-      throw new Error(`No ${assetCode} trustline found for this account`);
-    }
-    asset = new Asset(assetCode, matchingBalance.asset_issuer);
-  }
+  const asset = await resolveAsset(server, sourceAddress, assetCode);
 
   return buildSignAndSubmit(
     sourceAddress,
@@ -369,6 +376,18 @@ export async function buildAndSubmitPayment(
   );
 }
 
+/**
+ * Bridges an asset from a classic G-address to a Soroban C-address.
+ *
+ * Classic Stellar payment operations cannot target a contract address — the
+ * protocol's PaymentOp.destination is a MuxedAccount, which has no encoding
+ * for C... StrKeys. Moving an asset onto a C-address requires invoking that
+ * asset's Stellar Asset Contract via Soroban (simulate + prepareTransaction),
+ * which isn't implemented yet (tracked in issue #284). Until that lands, this
+ * fails loudly and specifically here instead of letting the SDK reject the
+ * built operation with an opaque "destination is invalid", or letting a
+ * classic payment silently target the wrong address.
+ */
 export async function bridgeViaContract(
   sourceAddress: string,
   cAddress: string,
@@ -380,36 +399,16 @@ export async function bridgeViaContract(
     throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
   }
 
-  if (!BRIDGE_CONTRACT_ID) {
-    return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
-  }
-
-  const server = await getHorizonServer(network);
-  const passphrase = await getNetworkPassphrase(network);
-  const { Asset } = await import("@stellar/stellar-sdk");
-
-  // The contract always receives native XLM; cAddress is handled by the contract
-  const asset = Asset.native();
-
-  try {
-    return await buildSignAndSubmit(
-      sourceAddress,
-      BRIDGE_CONTRACT_ID,
-      asset,
-      amount,
-      network,
-      server,
-      passphrase
+  if (isCAddress(cAddress)) {
+    const reason = BRIDGE_CONTRACT_ID
+      ? "the configured bridge contract cannot yet be invoked from this app"
+      : "no bridge contract is configured";
+    throw new Error(
+      `Bridging to a Soroban C-address isn't supported yet: classic Stellar payments can't target contract addresses, and ${reason}. Track progress on this in issue #284.`
     );
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { extras?: { result_codes?: unknown } } } };
-    if (err.response?.data?.extras?.result_codes) {
-      throw new Error(
-        `Transaction failed: ${JSON.stringify(err.response.data.extras.result_codes)}`
-      );
-    }
-    throw e;
   }
+
+  return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
 }
 
 export function getExplorerUrl(

@@ -24,9 +24,16 @@ describe("Network constants", () => {
     expect(STELLAR_NETWORK.TESTNET).toBe("TESTNET");
   });
 
-  it("Soroban RPC URLs are valid", () => {
-    expect(SOROBAN_RPC_URL.PUBLIC).toContain("stellar.org");
-    expect(SOROBAN_RPC_URL.TESTNET).toContain("testnet");
+  it("TESTNET Soroban RPC defaults to the real SDF endpoint", () => {
+    // Regression: this used to be "soroban-rpc-testnet.stellar.org", a
+    // hostname that never resolved. See issue #286.
+    expect(SOROBAN_RPC_URL.TESTNET).toBe("https://soroban-testnet.stellar.org");
+  });
+
+  it("PUBLIC Soroban RPC is empty unless explicitly configured", () => {
+    // SDF does not operate a free public mainnet Soroban RPC; getSorobanRpcServer
+    // throws a clear configuration error rather than resolving to a fake hostname.
+    expect(SOROBAN_RPC_URL.PUBLIC).toBe("");
   });
 
   it("Horizon URLs are valid", () => {
