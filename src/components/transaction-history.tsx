@@ -80,7 +80,7 @@ function TransactionHistory({ transactions, loading, network }: Props) {
       </div>
       {loading ? (
         <div className="p-12 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-[var(--text-muted)]" />
+          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
         </div>
       ) : transactions.length === 0 ? (
         <div className="p-12 text-center">

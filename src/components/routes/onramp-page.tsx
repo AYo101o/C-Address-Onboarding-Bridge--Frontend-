@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 
@@ -32,6 +32,17 @@ const providers = [
   },
 ];
 
+export function getProviderFeeRate(providerId: string): number {
+  return providerId === "moonpay" ? 0.045 : 0.05;
+}
+
+export function calculateOnrampFeeAndReceive(amount: number, providerId: string) {
+  const feeRate = getProviderFeeRate(providerId);
+  const fee = amount * feeRate;
+  const receive = amount - fee;
+  return { feeRate, fee, receive };
+}
+
 export default function OnrampPage() {
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
@@ -43,11 +54,15 @@ export default function OnrampPage() {
   const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
   const canProceed = cAddress && fiatAmount && validAddress && validAmount;
 
+  const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
+    Number(fiatAmount) || 0,
+    selectedProvider
+  );
+
   const handleProviderRedirect = () => {
     if (!canProceed) return;
     setError(null);
 
-    const provider = providers.find((p) => p.id === selectedProvider);
     if (!provider) return;
 
     if (!provider.apiKey) {
@@ -72,8 +87,6 @@ export default function OnrampPage() {
     }, 1500);
   };
 
-  const provider = providers.find((p) => p.id === selectedProvider);
-
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="mb-8">
@@ -95,6 +108,7 @@ export default function OnrampPage() {
                       <button
                         key={p.id}
                         onClick={() => { setSelectedProvider(p.id); setError(null); }}
+                        aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           selectedProvider === p.id
                             ? "border-[var(--primary)] bg-[var(--primary)]/5"
@@ -161,14 +175,14 @@ export default function OnrampPage() {
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
                     <span>
-                      -${fiatAmount ? (Number(fiatAmount) * (selectedProvider === "moonpay" ? 0.045 : 0.05)).toFixed(2) : "0"}
+                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Est. receive</span>
                     <span className="font-semibold">
                       {fiatAmount && validAmount
-                        ? `~${(Number(fiatAmount) * 0.95 * (selectedProvider === "moonpay" ? 1 : 0.95)).toFixed(2)} USDC`
+                        ? `~${receiveAmount.toFixed(2)} USDC`
                         : "—"}
                     </span>
                   </div>
