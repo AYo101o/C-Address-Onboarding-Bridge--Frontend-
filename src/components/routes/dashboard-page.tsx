@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2 } from "lucide-react";
+import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2, X } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl } from "@/lib/stellar";
 import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 // Content check for the 30s poll: transaction fields are derived from
 // immutable Horizon records, so the only meaningful changes are which
@@ -24,7 +25,7 @@ function areTransactionsEqual(a: BridgeTransaction[], b: BridgeTransaction[]): b
 
 export default function DashboardPage() {
   const { isConnected, address, network, connect } = useWallet();
-  const [copied, setCopied] = useState(false);
+  const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
   const [balance, setBalance] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<BridgeTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,9 +73,7 @@ export default function DashboardPage() {
 
   const handleCopy = () => {
     if (!address) return;
-    navigator.clipboard.writeText(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copyToClipboard(address);
   };
 
   if (!isConnected) {
@@ -126,9 +125,22 @@ export default function DashboardPage() {
             <code className="text-sm font-mono">
               {address?.slice(0, 8)}...{address?.slice(-8)}
             </code>
-            <button onClick={handleCopy} className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors">
-              {copied ? <Check className="w-3 h-3 text-[var(--success)]" /> : <Copy className="w-3 h-3 text-[var(--text-muted)]" />}
+            <button
+              onClick={handleCopy}
+              title={copyStatus === "error" ? "Copy failed — check clipboard permissions" : "Copy address"}
+              className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors"
+            >
+              {copyStatus === "copied" ? (
+                <Check className="w-3 h-3 text-[var(--success)]" />
+              ) : copyStatus === "error" ? (
+                <X className="w-3 h-3 text-[var(--error,#ef4444)]" />
+              ) : (
+                <Copy className="w-3 h-3 text-[var(--text-muted)]" />
+              )}
             </button>
+            {copyStatus === "error" && (
+              <span className="text-xs text-[var(--error,#ef4444)]">Copy failed</span>
+            )}
           </div>
           <div className="text-xs text-[var(--text-muted)] mt-1">
             {network === "PUBLIC" ? "Mainnet" : "Testnet"}
