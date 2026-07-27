@@ -2,11 +2,12 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { connectWallet, checkConnection, getWalletAddress, getCurrentNetwork } from "@/lib/stellar";
+import type { StellarNetwork } from "@/lib/types";
 
 interface WalletContextType {
   address: string | null;
   publicKey: string | null;
-  network: "PUBLIC" | "TESTNET";
+  network: StellarNetwork;
   isConnected: boolean;
   isConnecting: boolean;
   connect: () => Promise<void>;
@@ -23,7 +24,7 @@ const BACKOFF_THRESHOLD_MS = 30000;
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
-  const [network, setNetwork] = useState<"PUBLIC" | "TESTNET">("TESTNET");
+  const [network, setNetwork] = useState<StellarNetwork>("TESTNET");
   const [isConnecting, setIsConnecting] = useState(false);
 
   const updateConnection = useCallback(async () => {
