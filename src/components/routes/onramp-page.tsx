@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 
@@ -63,7 +63,6 @@ export default function OnrampPage() {
     if (!canProceed) return;
     setError(null);
 
-    const provider = providers.find((p) => p.id === selectedProvider);
     if (!provider) return;
 
     if (!provider.apiKey) {
@@ -87,8 +86,6 @@ export default function OnrampPage() {
       window.open(url, "_blank", "noopener,noreferrer");
     }, 1500);
   };
-
-  const provider = providers.find((p) => p.id === selectedProvider);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
