@@ -13,6 +13,7 @@ import {
   Horizon,
   rpc,
   Account,
+  StrKey,
 } from "@stellar/stellar-sdk";
 import { BRIDGE_CONTRACT_ID } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
@@ -84,16 +85,20 @@ export async function getCurrentNetwork(): Promise<"PUBLIC" | "TESTNET"> {
   }
 }
 
+// Validate against the SDK's StrKey, which enforces the correct base32
+// alphabet (A-Z, 2-7 — no 0/1/8/9) and the trailing CRC16 checksum. A
+// hand-rolled regex cannot verify the checksum and, as [G|C] showed, is easy
+// to get subtly wrong (that character class also accepted a leading '|').
 export function isValidStellarAddress(address: string): boolean {
-  return /^[G|C][A-Z0-9]{55}$/.test(address);
+  return StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address);
 }
 
 export function isCAddress(address: string): boolean {
-  return address.startsWith("C") && address.length === 56;
+  return StrKey.isValidContract(address);
 }
 
 export function isGAddress(address: string): boolean {
-  return address.startsWith("G") && address.length === 56;
+  return StrKey.isValidEd25519PublicKey(address);
 }
 
 export interface PaymentResult {

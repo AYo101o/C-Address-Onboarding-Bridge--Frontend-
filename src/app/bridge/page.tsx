@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, bridgeViaContract, getExplorerUrl, getAccountBalances } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance } from "@/lib/stellar";
+import type { AccountBalances } from "@/lib/stellar";
 
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
@@ -18,11 +19,36 @@ export default function BridgePage() {
   const [txStatus, setTxStatus] = useState<TxStatus>("idle");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
-  const [sourceBalance, setSourceBalance] = useState<string | null>(null);
+  const [sourceBalances, setSourceBalances] = useState<AccountBalances | null>(null);
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
-  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && txStatus === "idle";
+
+  // Balance available for the currently-selected asset. XLM lives in `total`;
+  // other assets (e.g. USDC) come from the matching entry in `balances`.
+  const availableBalance =
+    sourceBalances === null
+      ? null
+      : asset === "XLM"
+        ? sourceBalances.total
+        : sourceBalances.balances.find((b) => b.asset === asset)?.amount ?? "0";
+
+  // Spendable balance leaves the XLM minimum reserve untouched; the reserve is
+  // only held in XLM, so non-XLM assets can be sent down to zero.
+  const spendableBalance =
+    availableBalance === null
+      ? null
+      : asset === "XLM"
+        ? Number(availableBalance) - Number(getAccountMinimumBalance())
+        : Number(availableBalance);
+
+  const insufficientBalance =
+    spendableBalance !== null &&
+    amount !== "" &&
+    !Number.isNaN(Number(amount)) &&
+    Number(amount) > spendableBalance;
+
+  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && !insufficientBalance && txStatus === "idle";
 
   const handleUseConnected = () => {
     if (address) {
@@ -33,7 +59,7 @@ export default function BridgePage() {
 
   const checkBalance = async (addr: string) => {
     const result = await getAccountBalances(addr, network);
-    setSourceBalance(result.total);
+    setSourceBalances(result);
   };
 
   const handleSubmit = () => {
@@ -94,7 +120,7 @@ export default function BridgePage() {
                       value={fromAddress}
                       onChange={(e) => {
                         setFromAddress(e.target.value);
-                        setSourceBalance(null);
+                        setSourceBalances(null);
                       }}
                       placeholder={isConnected ? address! : "GABC...DEF or connect wallet"}
                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
@@ -112,9 +138,9 @@ export default function BridgePage() {
                       Use connected wallet
                     </button>
                   )}
-                  {sourceBalance !== null && (
+                  {availableBalance !== null && (
                     <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Balance: {parseFloat(sourceBalance).toFixed(2)} XLM
+                      Balance: {parseFloat(availableBalance).toFixed(2)} {asset}
                     </p>
                   )}
                 </div>
@@ -168,6 +194,13 @@ export default function BridgePage() {
                       <option>USDC</option>
                     </select>
                   </div>
+                  {insufficientBalance && (
+                    <p className="text-xs text-[var(--error)] mt-1">
+                      Insufficient balance. Available:{" "}
+                      {spendableBalance !== null ? Math.max(spendableBalance, 0).toFixed(2) : "0.00"} {asset}
+                      {asset === "XLM" ? " (after minimum reserve)" : ""}
+                    </p>
+                  )}
                 </div>
 
                 <button
