@@ -12,7 +12,7 @@
 import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, Menu, X } from "lucide-react";
+import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, Menu, X, AlertTriangle } from "lucide-react";
 import { useWallet } from "./wallet-provider";
 import { PrefetchLink } from "./prefetch-link";
 
@@ -25,7 +25,7 @@ const navLinks = [
 
 const Navbar = () => {
   const pathname = usePathname();
-  const { isConnected, address, connect, isConnecting } = useWallet();
+  const { isConnected, address, network, connect, isConnecting, networkMismatch, dismissNetworkMismatch } = useWallet();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +110,16 @@ const Navbar = () => {
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
                 <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                 <span className="text-xs font-mono text-[var(--text-muted)]">{addressDisplay}</span>
+                <span
+                  className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${
+                    network === "PUBLIC"
+                      ? "bg-[var(--success)]/15 text-[var(--success)]"
+                      : "bg-yellow-500/15 text-yellow-400"
+                  }`}
+                  title={`Connected to ${network === "PUBLIC" ? "Mainnet" : "Testnet"}`}
+                >
+                  {network === "PUBLIC" ? "Mainnet" : "Testnet"}
+                </span>
               </div>
             ) : (
               <button
@@ -135,6 +145,34 @@ const Navbar = () => {
           </div>
         </div>
       </div>
+
+      {networkMismatch && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="border-t border-yellow-500/30 bg-yellow-500/10 px-4 py-2"
+        >
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                <strong>Network changed</strong> — Freighter is now on{" "}
+                <span className="font-mono font-semibold">
+                  {network === "PUBLIC" ? "Mainnet" : "Testnet"}
+                </span>
+                . Review any in-progress forms before continuing.
+              </span>
+            </div>
+            <button
+              onClick={dismissNetworkMismatch}
+              aria-label="Dismiss network change warning"
+              className="flex-shrink-0 text-yellow-400/70 hover:text-yellow-400 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {mobileOpen && (
         <div
