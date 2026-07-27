@@ -141,3 +141,103 @@ describe("isGAddress", () => {
     expect(isGAddress(corrupted)).toBe(false);
   });
 });
+
+describe("getAccountBalances cache", () => {
+  const account = (xlm: string) => ({
+    balances: [{ asset_type: "native", balance: xlm }],
+  });
+
+  beforeEach(() => {
+    clearAccountBalancesCache();
+    loadAccount.mockReset();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("parses the native balance into total", async () => {
+    loadAccount.mockResolvedValue(account("100.5"));
+
+    const result = await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    expect(result.total).toBe("100.5");
+    expect(result.balances).toEqual([{ asset: "XLM", amount: "100.5" }]);
+  });
+
+  it("serves back-to-back calls within the TTL from cache", async () => {
+    loadAccount.mockResolvedValue(account("100"));
+
+    const first = await getAccountBalances(G_ADDRESS, "TESTNET");
+    const second = await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    expect(first.total).toBe("100");
+    expect(second.total).toBe("100");
+    expect(loadAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("refetches once the TTL has elapsed", async () => {
+    loadAccount.mockResolvedValue(account("100"));
+    await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    vi.advanceTimersByTime(11_000);
+    loadAccount.mockResolvedValue(account("200"));
+    const result = await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    expect(result.total).toBe("200");
+    expect(loadAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it("caches per address:network key", async () => {
+    loadAccount.mockResolvedValue(account("100"));
+
+    await getAccountBalances(G_ADDRESS, "TESTNET");
+    await getAccountBalances(G_ADDRESS, "PUBLIC");
+
+    // Same address, different network -> distinct cache entries.
+    expect(loadAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it("deduplicates concurrent in-flight requests", async () => {
+    let resolve!: (value: unknown) => void;
+    loadAccount.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      })
+    );
+
+    const p1 = getAccountBalances(G_ADDRESS, "TESTNET");
+    const p2 = getAccountBalances(G_ADDRESS, "TESTNET");
+    resolve(account("77"));
+    const [r1, r2] = await Promise.all([p1, p2]);
+
+    expect(r1.total).toBe("77");
+    expect(r2.total).toBe("77");
+    expect(loadAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the fallback and does not cache failures", async () => {
+    loadAccount.mockRejectedValueOnce(new Error("network down"));
+
+    const failed = await getAccountBalances(G_ADDRESS, "TESTNET");
+    expect(failed).toEqual({ total: "0", balances: [] });
+
+    // Next call within the TTL must retry rather than serve the fallback.
+    loadAccount.mockResolvedValue(account("50"));
+    const recovered = await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    expect(recovered.total).toBe("50");
+    expect(loadAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it("clearAccountBalancesCache forces a refetch", async () => {
+    loadAccount.mockResolvedValue(account("100"));
+    await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    clearAccountBalancesCache();
+    await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    expect(loadAccount).toHaveBeenCalledTimes(2);
+  });
+});
