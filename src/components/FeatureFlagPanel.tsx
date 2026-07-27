@@ -8,11 +8,12 @@ import { useFeatureFlags } from '@/contexts/FeatureFlagContext';
  * Only renders when NODE_ENV is 'development'.
  */
 export function FeatureFlagPanel() {
-  if (process.env.NODE_ENV !== 'development') return null;
-
-  const { flags, devOverrides, isEnabled, setOverride, clearOverride } = useFeatureFlags();
+   const { flags, devOverrides, isEnabled, setOverride, clearOverride } = useFeatureFlags();
   const [isOpen, setIsOpen] = useState(false);
 
+  if (process.env.NODE_ENV !== 'development') return null;
+
+ 
   return (
     <>
       {/* Toggle button — fixed bottom-right */}
