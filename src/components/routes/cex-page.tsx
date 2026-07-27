@@ -35,6 +35,7 @@ export default function CexPage() {
                 <button
                   key={cex.name}
                   onClick={() => setSelectedCex(cex)}
+                  aria-pressed={selectedCex.name === cex.name}
                   className={`p-4 rounded-lg border text-left transition-all ${
                     selectedCex.name === cex.name
                       ? "border-[var(--primary)] bg-[var(--primary)]/5"
