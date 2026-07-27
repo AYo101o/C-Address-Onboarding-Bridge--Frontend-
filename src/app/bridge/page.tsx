@@ -197,6 +197,16 @@ export default function BridgePage() {
                         className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                         disabled={txStatus !== "idle"}
                       />
+                      {spendableBalance !== null && spendableBalance > 0 && txStatus === "idle" && (
+                        <button
+                          type="button"
+                          onClick={() => setAmount(Math.max(spendableBalance, 0).toFixed(7))}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-xs font-semibold bg-[var(--primary)]/10 text-[var(--primary-light)] hover:bg-[var(--primary)]/20 transition-colors"
+                          aria-label="Fill maximum available balance"
+                        >
+                          Max
+                        </button>
+                      )}
                     </div>
                     <select
                       value={asset}

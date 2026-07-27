@@ -10,6 +10,10 @@ interface WalletContextType {
   network: StellarNetwork;
   isConnected: boolean;
   isConnecting: boolean;
+  /** True when the network changed mid-session (after initial connection). */
+  networkMismatch: boolean;
+  /** Call to dismiss the network-mismatch banner for the current session. */
+  dismissNetworkMismatch: () => void;
   connect: () => Promise<void>;
   disconnect: () => void;
 }
@@ -29,6 +33,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // NEXT_PUBLIC_STELLAR_NETWORK drives this value at build time. (#302)
   const [network, setNetwork] = useState<StellarNetwork>(APP_NETWORK);
   const [isConnecting, setIsConnecting] = useState(false);
+  /**
+   * `networkMismatch` is true when the network changed after the initial
+   * connection was established. It's reset to false on:
+   *   - disconnect (address becomes null)
+   *   - explicit dismissal via dismissNetworkMismatch()
+   */
+  const [networkMismatch, setNetworkMismatch] = useState(false);
+  /**
+   * The network that was active at connection time. Used to detect changes.
+   * null means no connection has been established yet this session.
+   */
+  const initialNetworkRef = useRef<"PUBLIC" | "TESTNET" | null>(null);
+  /** Whether the user has dismissed the mismatch banner for this session. */
+  const dismissedRef = useRef(false);
+
+  const dismissNetworkMismatch = useCallback(() => {
+    dismissedRef.current = true;
+    setNetworkMismatch(false);
+  }, []);
 
   const updateConnection = useCallback(async () => {
     const isConnected = await checkConnection();
@@ -37,8 +60,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const net = await getCurrentNetwork();
       setAddress(pk);
       setNetwork(net);
+
+      if (initialNetworkRef.current === null) {
+        // First time we see the wallet connected — record the baseline network.
+        initialNetworkRef.current = net;
+      } else if (!dismissedRef.current && net !== initialNetworkRef.current) {
+        // Network changed after initial connection → surface warning.
+        setNetworkMismatch(true);
+        // Update the baseline so subsequent same-network polls don't re-fire,
+        // but a *further* change will fire again.
+        initialNetworkRef.current = net;
+      }
     } else {
       setAddress(null);
+      // Reset mismatch tracking when wallet disconnects.
+      initialNetworkRef.current = null;
+      dismissedRef.current = false;
+      setNetworkMismatch(false);
     }
   }, []);
 
@@ -50,6 +88,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setAddress(pk);
         const net = await getCurrentNetwork();
         setNetwork(net);
+        // Record the network at the point of explicit connection so we can
+        // detect changes later in the polling loop.
+        initialNetworkRef.current = net;
+        dismissedRef.current = false;
+        setNetworkMismatch(false);
       }
     } finally {
       setIsConnecting(false);
@@ -58,6 +101,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(() => {
     setAddress(null);
+    initialNetworkRef.current = null;
+    dismissedRef.current = false;
+    setNetworkMismatch(false);
   }, []);
 
   // Polling with backoff + visibility awareness
@@ -132,6 +178,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         network,
         isConnected: !!address,
         isConnecting,
+        networkMismatch,
+        dismissNetworkMismatch,
         connect,
         disconnect,
       }}
