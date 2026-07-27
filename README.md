@@ -4,7 +4,7 @@ The onboarding layer for Soroban dApps. Fund any Soroban smart account (C-addres
 
 ## Features
 
-- **G → C Bridge** — Send XLM or USDC from a Stellar G-address to a Soroban C-address via a single transaction.
+- **G → C Bridge** *(not yet live — see #284)* — Will send XLM or USDC from a Stellar G-address to a Soroban C-address; classic Stellar payments can't target contract addresses, so this requires a Soroban smart-contract transfer step that hasn't shipped. The UI currently blocks this flow with an explanatory message instead of submitting a doomed transaction.
 - **Fiat Onramp** — Buy USDC with a credit/debit card via Moonpay or Transak and send directly to a C-address.
 - **CEX Withdrawal Routing** — Withdraw from Binance, Coinbase, or Kraken to a bridge address that routes funds to your C-address.
 
@@ -38,8 +38,10 @@ The onboarding layer for Soroban dApps. Fund any Soroban smart account (C-addres
 
    | Variable | Required | Description |
    |---|---|---|
-   | `NEXT_PUBLIC_STELLAR_NETWORK` | Yes | Sets the Stellar network the app connects to. Accepted values: `PUBLIC` (mainnet) or `TESTNET`. Any value other than `PUBLIC` defaults to `TESTNET`. This drives `APP_NETWORK` in `src/lib/types.ts`, which is used as the initial/disconnected network in `WalletProvider` and for all Horizon and Soroban RPC calls before a wallet connects. |
-   | `NEXT_PUBLIC_BRIDGE_CONTRACT_ID` | No | Soroban bridge contract address. When set, payments go through the bridge contract; when absent, payments are sent directly to the destination address. |
+   | `NEXT_PUBLIC_STELLAR_NETWORK` | Yes | `TESTNET` or `PUBLIC` |
+   | `NEXT_PUBLIC_BRIDGE_CONTRACT_ID` | No | Soroban bridge contract (omits direct payment) |
+   | `NEXT_PUBLIC_SOROBAN_RPC_URL_TESTNET` | No | Soroban RPC endpoint for testnet. Defaults to the official SDF endpoint `https://soroban-testnet.stellar.org` |
+   | `NEXT_PUBLIC_SOROBAN_RPC_URL_PUBLIC` | For mainnet Soroban calls | SDF does not operate a free public mainnet Soroban RPC — set this to your own provider's URL. Soroban RPC calls on `PUBLIC` fail with a clear configuration error until this is set |
    | `NEXT_PUBLIC_MOONPAY_API_KEY` | For onramp | From [Moonpay dashboard](https://buy.moonpay.com) |
    | `NEXT_PUBLIC_TRANSAK_API_KEY` | For onramp | From [Transak dashboard](https://global.transak.com) |
 

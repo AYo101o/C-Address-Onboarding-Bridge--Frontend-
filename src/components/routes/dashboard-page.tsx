@@ -37,8 +37,11 @@ export default function DashboardPage() {
     // re-ran (e.g. a rapid network switch). Without this, a slow response
     // for the previous network could overwrite fresh data for the current one.
     let cancelled = false;
-    const fetchData = async () => {
-      setLoading(true);
+    // isInitial distinguishes the first load from background poll ticks.
+    // We only show the loading spinner on the initial fetch so that the UI
+    // does not flash back to a skeleton state on every 30-second poll. (#292)
+    const fetchData = async (isInitial: boolean) => {
+      if (isInitial) setLoading(true);
       setError(null);
       try {
         const [balResult, txResult] = await Promise.all([
@@ -54,11 +57,11 @@ export default function DashboardPage() {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to fetch data");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && isInitial) setLoading(false);
       }
     };
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
+    fetchData(true);
+    const interval = setInterval(() => fetchData(false), 30000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -237,7 +240,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <TransactionHistory transactions={transactions} loading={loading} network={network} />
+      <TransactionHistory transactions={transactions} loading={loading} network={network} address={address ?? undefined} />
     </div>
   );
 }

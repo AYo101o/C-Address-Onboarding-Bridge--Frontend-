@@ -43,13 +43,36 @@ export function calculateOnrampFeeAndReceive(amount: number, providerId: string)
   return { feeRate, fee, receive };
 }
 
+function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string): string {
+  const params =
+    p.id === "moonpay"
+      ? new URLSearchParams({
+          apiKey: p.apiKey,
+          walletAddress: cAddress,
+          currencyCode: "usdc_xlm",
+          baseCurrencyAmount: fiatAmount,
+          baseCurrencyCode: "usd",
+        })
+      : new URLSearchParams({
+          apiKey: p.apiKey,
+          walletAddress: cAddress,
+          network: "stellar",
+          defaultCryptoCurrency: "USDC",
+          defaultFiatAmount: fiatAmount,
+          fiatCurrency: "USD",
+        });
+  return `${p.baseUrl}?${params}`;
+}
+
 export default function OnrampPage() {
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("moonpay");
   const [step, setStep] = useState<"form" | "redirect">("form");
   const [error, setError] = useState<string | null>(null);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
+  const provider = providers.find((p) => p.id === selectedProvider);
   const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
   const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
   const canProceed = cAddress && fiatAmount && validAddress && validAmount;
@@ -70,21 +93,12 @@ export default function OnrampPage() {
       return;
     }
 
+    const url = buildProviderUrl(provider, cAddress, fiatAmount);
+    setRedirectUrl(url);
     setStep("redirect");
-
-    const params = new URLSearchParams({
-      apiKey: provider.apiKey,
-      walletAddress: cAddress,
-      walletChain: "Stellar",
-      defaultCryptoCurrency: "USDC",
-      defaultFiatAmount: fiatAmount,
-    });
-
-    const url = `${provider.baseUrl}?${params}`;
-
-    setTimeout(() => {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }, 1500);
+    // Open synchronously within the click handler to preserve user activation
+    // so default popup blockers do not block the new tab.
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -213,14 +227,27 @@ export default function OnrampPage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Redirecting to {provider?.name}</h3>
                 <p className="text-sm text-[var(--text-muted)] mb-4">
-                  You will be redirected to complete your purchase. Funds will be sent to your C-address.
+                  A new tab has been opened to complete your purchase. Funds will be sent to your C-address.
                 </p>
-                <button
-                  onClick={() => setStep("form")}
-                  className="text-sm text-[var(--primary-light)] hover:underline"
-                >
-                  Go back
-                </button>
+                {redirectUrl && (
+                  <a
+                    href={redirectUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Checkout didn&apos;t open? Continue to {provider?.name}
+                  </a>
+                )}
+                <div className="mt-4">
+                  <button
+                    onClick={() => { setStep("form"); setRedirectUrl(null); }}
+                    className="text-sm text-[var(--primary-light)] hover:underline"
+                  >
+                    Go back
+                  </button>
+                </div>
               </div>
             )}
           </div>
