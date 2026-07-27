@@ -24,3 +24,5 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+        env:
+          ENFORCE_BUDGET: "true"

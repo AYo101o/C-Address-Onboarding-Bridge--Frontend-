@@ -1,6 +1,15 @@
 "use client";
 
-import React, { memo, useState, useCallback, useMemo } from "react";
+/**
+ * Keyboard Navigation & Accessibility (A11Y) Behavior for Mobile Menu:
+ * - When mobile menu opens (mobileOpen = true), focus programmatically moves to the first interactive nav link inside the menu.
+ * - Pressing 'Escape' key while menu is open closes the mobile menu.
+ * - When mobile menu closes, focus is programmatically restored to the toggle button.
+ * - Toggle button features proper ARIA attributes (`aria-expanded`, `aria-controls`, `aria-label`).
+ * - Mobile menu container includes `id="mobile-menu"`, `role="region"`, and `aria-label="Mobile Navigation"`.
+ */
+
+import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, Menu, X } from "lucide-react";
@@ -19,6 +28,10 @@ const Navbar = () => {
   const { isConnected, address, connect, isConnecting } = useWallet();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const wasOpenRef = useRef(false);
+
   const toggleMobile = useCallback(() => setMobileOpen((v) => !v), []);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
   const handleConnect = useCallback(() => connect(), [connect]);
@@ -26,6 +39,37 @@ const Navbar = () => {
     connect();
     setMobileOpen(false);
   }, [connect]);
+
+  // Keyboard navigation: Handle Escape key to close mobile menu
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileOpen]);
+
+  // Focus management: Move focus into menu on open, return focus to toggle on close
+  useEffect(() => {
+    if (mobileOpen) {
+      const timer = requestAnimationFrame(() => {
+        const firstFocusable = mobileMenuRef.current?.querySelector<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        firstFocusable?.focus();
+      });
+      wasOpenRef.current = true;
+      return () => cancelAnimationFrame(timer);
+    } else if (wasOpenRef.current) {
+      toggleButtonRef.current?.focus();
+      wasOpenRef.current = false;
+    }
+  }, [mobileOpen]);
 
   const addressDisplay = useMemo(() => (address ? `${address.slice(0, 4)}...${address.slice(-4)}` : null), [address]);
 
@@ -78,7 +122,14 @@ const Navbar = () => {
               </button>
             )}
 
-            <button onClick={toggleMobile} className="md:hidden p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--foreground)]">
+            <button
+              ref={toggleButtonRef}
+              onClick={toggleMobile}
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-menu"
+              aria-label={mobileOpen ? "Close menu" : "Open menu"}
+              className="md:hidden p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--foreground)]"
+            >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
@@ -86,7 +137,13 @@ const Navbar = () => {
       </div>
 
       {mobileOpen && (
-        <div className="md:hidden border-t border-[var(--border)] bg-[var(--background)]">
+        <div
+          ref={mobileMenuRef}
+          id="mobile-menu"
+          role="region"
+          aria-label="Mobile Navigation"
+          className="md:hidden border-t border-[var(--border)] bg-[var(--background)]"
+        >
           <div className="px-4 py-3 space-y-1">
             {navLinks.map((link) => {
               const Icon = link.icon;
@@ -125,3 +182,4 @@ const Navbar = () => {
 };
 
 export default memo(Navbar);
+
