@@ -23,7 +23,14 @@ describe("Stellar SDK Imports Unification", () => {
   it("returns Soroban RPC server instance correctly", async () => {
     const rpcServer = await getSorobanRpcServer("TESTNET");
     expect(rpcServer).toBeDefined();
-    expect(rpcServer.serverURL.toString()).toContain("soroban-rpc-testnet.stellar.org");
+    // Regression: this hostname never resolved in DNS. See issue #286.
+    expect(rpcServer.serverURL.toString()).toContain("soroban-testnet.stellar.org");
+  });
+
+  it("throws a clear configuration error for PUBLIC when no RPC URL is set", async () => {
+    await expect(getSorobanRpcServer("PUBLIC")).rejects.toThrow(
+      /NEXT_PUBLIC_SOROBAN_RPC_URL_PUBLIC/
+    );
   });
 
   it("returns network passphrase correctly", async () => {

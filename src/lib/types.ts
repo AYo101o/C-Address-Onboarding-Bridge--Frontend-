@@ -51,9 +51,13 @@ export const STELLAR_NETWORK = {
 /** The set of supported Stellar network identifiers. */
 export type StellarNetwork = keyof typeof STELLAR_NETWORK;
 
+// SDF does not operate a free public mainnet Soroban RPC, so PUBLIC must be
+// configured explicitly; getSorobanRpcServer throws a clear error if it's
+// unset rather than resolving to a non-existent hostname. TESTNET defaults to
+// the official SDF endpoint but can still be overridden per-environment.
 export const SOROBAN_RPC_URL = {
-  PUBLIC: "https://soroban-rpc.stellar.org",
-  TESTNET: "https://soroban-rpc-testnet.stellar.org",
+  PUBLIC: process.env.NEXT_PUBLIC_SOROBAN_RPC_URL_PUBLIC ?? "",
+  TESTNET: process.env.NEXT_PUBLIC_SOROBAN_RPC_URL_TESTNET ?? "https://soroban-testnet.stellar.org",
 } as const;
 
 export const HORIZON_URL = {
