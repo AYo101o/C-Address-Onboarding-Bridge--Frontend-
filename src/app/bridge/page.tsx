@@ -9,6 +9,14 @@ import type { AccountBalances } from "@/lib/stellar";
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
 
+// Classic Stellar payments cannot target a Soroban C-address, and the
+// Soroban smart-contract transfer path (SAC invocation via prepareTransaction)
+// hasn't shipped yet — see issue #284. Block submission with an honest
+// message instead of letting users hit an opaque "destination is invalid"
+// error after signing.
+const BRIDGING_UNAVAILABLE_MESSAGE =
+  "G → C bridging isn't live yet: classic Stellar payments can't reach Soroban contract addresses, and the Soroban transfer path hasn't shipped. Follow progress in issue #284.";
+
 export default function BridgePage() {
   const { isConnected, address, network, connect } = useWallet();
   const [fromAddress, setFromAddress] = useState("");
@@ -49,7 +57,11 @@ export default function BridgePage() {
     !Number.isNaN(Number(amount)) &&
     Number(amount) > spendableBalance;
 
-  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && validAmount && !insufficientBalance && txStatus === "idle";
+  // No Soroban transfer path is implemented yet, so no destination this form
+  // accepts (validTo requires a C-address) can actually be bridged. See #284.
+  const bridgingBlocked = Boolean(toAddress) && validTo;
+
+  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && !insufficientBalance && !bridgingBlocked && txStatus === "idle";
 
   const handleUseConnected = () => {
     if (address) {
@@ -210,6 +222,13 @@ export default function BridgePage() {
                   )}
                 </div>
 
+                {bridgingBlocked && (
+                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[var(--text-muted)]">{BRIDGING_UNAVAILABLE_MESSAGE}</p>
+                  </div>
+                )}
+
                 <button
                   onClick={handleSubmit}
                   disabled={!canProceed}
@@ -341,12 +360,12 @@ export default function BridgePage() {
             <h3 className="font-semibold mb-3">About G → C Bridging</h3>
             <ul className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">
-                <Check className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />
-                <span>Bridge XLM or USDC from any G-address</span>
+                <AlertCircle className="w-4 h-4 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                <span>Not yet available — the Soroban contract-transfer step hasn&apos;t shipped (issue #284)</span>
               </li>
               <li className="flex gap-2">
                 <Check className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />
-                <span>Supports all Soroban C-addresses</span>
+                <span>Will support XLM or USDC from any G-address once live</span>
               </li>
               <li className="flex gap-2">
                 <Check className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />

@@ -15,27 +15,23 @@ import {
   Account,
   StrKey,
 } from "@stellar/stellar-sdk";
-import { BRIDGE_CONTRACT_ID, type StellarNetwork } from "./types";
+import { BRIDGE_CONTRACT_ID, HORIZON_URL, SOROBAN_RPC_URL, type StellarNetwork } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
-
-const HORIZON_URLS: Record<StellarNetwork, string> = {
-  PUBLIC: "https://horizon.stellar.org",
-  TESTNET: "https://horizon-testnet.stellar.org",
-};
-
-const SOROBAN_RPC_URLS: Record<StellarNetwork, string> = {
-  PUBLIC: "https://soroban-rpc.stellar.org",
-  TESTNET: "https://soroban-rpc-testnet.stellar.org",
-};
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
   const { Horizon } = await import("@stellar/stellar-sdk");
-  return new Horizon.Server(HORIZON_URLS[network]);
+  return new Horizon.Server(HORIZON_URL[network]);
 }
 
 export async function getSorobanRpcServer(network: StellarNetwork): Promise<rpc.Server> {
+  const url = SOROBAN_RPC_URL[network];
+  if (!url) {
+    throw new Error(
+      `No Soroban RPC URL configured for ${network}. Set NEXT_PUBLIC_SOROBAN_RPC_URL_${network} in your environment.`
+    );
+  }
   const { rpc } = await import("@stellar/stellar-sdk");
-  return new rpc.Server(SOROBAN_RPC_URLS[network]);
+  return new rpc.Server(url);
 }
 
 export async function getNetworkPassphrase(network: StellarNetwork): Promise<string> {
@@ -116,6 +112,8 @@ export interface PaymentResult {
 export interface AccountBalances {
   total: string;
   balances: { asset: string; amount: string }[];
+  /** True when the account does not exist on-chain (unfunded). (#293) */
+  unfunded?: boolean;
 }
 
 export interface BridgeTransactionData {
@@ -140,14 +138,24 @@ interface HorizonBalance {
 
 interface HorizonPayment {
   id: string;
+  type?: string;
   from?: string;
   to?: string;
+  /** Present on payment operations. Absent on create_account operations. (#294) */
   amount?: string;
+  /** Starting balance funded to a new account via create_account. (#294) */
+  starting_balance?: string;
   asset_type?: string;
   asset_code?: string;
+  /**
+   * May be absent on older Horizon responses.  When missing we treat the
+   * transaction as pending rather than confirmed or failed. (#294)
+   */
   transaction_successful?: boolean;
   created_at?: string;
   transaction_hash?: string;
+  funder?: string;
+  account?: string;
 }
 
 /**
@@ -187,12 +195,30 @@ async function loadAccountBalances(
   return { total, balances };
 }
 
+/**
+ * Inspect an error thrown by Horizon's loadAccount to determine whether it
+ * represents an unfunded (non-existent) account or a genuine network/server
+ * error.  Horizon returns HTTP 404 with `extras.result_codes` absent for
+ * accounts that have never received a funding payment. (#293)
+ */
+function isUnfundedAccountError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { response?: { status?: number } };
+  return e.response?.status === 404;
+}
+
 async function withBalanceFallback(
   promise: Promise<AccountBalances>
 ): Promise<AccountBalances> {
   try {
     return await promise;
-  } catch {
+  } catch (err) {
+    // Distinguish unfunded accounts from real errors so callers can surface
+    // a friendlier "account not yet funded" message instead of a generic
+    // error. (#293)
+    if (isUnfundedAccountError(err)) {
+      return { total: "0", balances: [], unfunded: true };
+    }
     return { total: "0", balances: [] };
   }
 }
@@ -245,17 +271,37 @@ export async function fetchRecentTransactions(
       .order("desc")
       .call();
 
-    return (payments.records as HorizonPayment[]).map((p) => ({
-      id: p.id,
-      fromAddress: p.from || "",
-      toAddress: p.to || "",
-      amount: p.amount || "0",
-      asset: p.asset_type === "native" ? "XLM" : (p.asset_code || "XLM"),
-      status: p.transaction_successful ? "confirmed" as const : "failed" as const,
-      timestamp: new Date(p.created_at || Date.now()).getTime(),
-      type: "g-to-c" as const,
-      hash: p.transaction_hash,
-    }));
+    return (payments.records as HorizonPayment[]).map((p) => {
+      // create_account operations use `funder`/`account` and `starting_balance`
+      // instead of the `from`/`to`/`amount` fields present on payment ops. (#294)
+      const isCreateAccount = p.type === "create_account";
+      const fromAddress = isCreateAccount ? (p.funder || "") : (p.from || "");
+      const toAddress = isCreateAccount ? (p.account || "") : (p.to || "");
+      const amount = isCreateAccount
+        ? (p.starting_balance || "0")
+        : (p.amount || "0");
+
+      // When `transaction_successful` is absent (older Horizon versions) we
+      // treat the record as pending rather than assuming it failed. (#294)
+      let status: "pending" | "confirmed" | "failed";
+      if (p.transaction_successful === undefined || p.transaction_successful === null) {
+        status = "pending";
+      } else {
+        status = p.transaction_successful ? "confirmed" : "failed";
+      }
+
+      return {
+        id: p.id,
+        fromAddress,
+        toAddress,
+        amount,
+        asset: p.asset_type === "native" || isCreateAccount ? "XLM" : (p.asset_code || "XLM"),
+        status,
+        timestamp: new Date(p.created_at || Date.now()).getTime(),
+        type: "g-to-c" as const,
+        hash: p.transaction_hash,
+      };
+    });
   } catch {
     return [];
   }
@@ -335,6 +381,32 @@ async function buildSignAndSubmit(
   );
 }
 
+/**
+ * Resolves the Asset a payment should use, validating any non-native
+ * trustline against the source account. Shared by buildAndSubmitPayment and
+ * bridgeViaContract so neither can silently substitute a different asset
+ * than the one the caller (and UI) asked for.
+ */
+async function resolveAsset(
+  server: Horizon.Server,
+  sourceAddress: string,
+  assetCode: string
+): Promise<Asset> {
+  const { Asset } = await import("@stellar/stellar-sdk");
+
+  if (assetCode === "XLM") {
+    return Asset.native();
+  }
+
+  const account = await server.loadAccount(sourceAddress);
+  const balances = account.balances as HorizonBalance[];
+  const matchingBalance = balances.find((b) => b.asset_code === assetCode);
+  if (!matchingBalance) {
+    throw new Error(`No ${assetCode} trustline found for this account`);
+  }
+  return new Asset(assetCode, matchingBalance.asset_issuer);
+}
+
 export async function buildAndSubmitPayment(
   sourceAddress: string,
   destinationAddress: string,
@@ -345,22 +417,7 @@ export async function buildAndSubmitPayment(
 ): Promise<PaymentResult> {
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { Asset } = await import("@stellar/stellar-sdk");
-
-  // Resolve the asset, validating any non-native trustline against the account
-  const horizonAccount = await server.loadAccount(sourceAddress);
-  let asset: Asset;
-
-  if (assetCode === "XLM") {
-    asset = Asset.native();
-  } else {
-    const balances = horizonAccount.balances as HorizonBalance[];
-    const matchingBalance = balances.find((b) => b.asset_code === assetCode);
-    if (!matchingBalance) {
-      throw new Error(`No ${assetCode} trustline found for this account`);
-    }
-    asset = new Asset(assetCode, matchingBalance.asset_issuer);
-  }
+  const asset = await resolveAsset(server, sourceAddress, assetCode);
 
   return buildSignAndSubmit(
     sourceAddress,
@@ -374,6 +431,18 @@ export async function buildAndSubmitPayment(
   );
 }
 
+/**
+ * Bridges an asset from a classic G-address to a Soroban C-address.
+ *
+ * Classic Stellar payment operations cannot target a contract address — the
+ * protocol's PaymentOp.destination is a MuxedAccount, which has no encoding
+ * for C... StrKeys. Moving an asset onto a C-address requires invoking that
+ * asset's Stellar Asset Contract via Soroban (simulate + prepareTransaction),
+ * which isn't implemented yet (tracked in issue #284). Until that lands, this
+ * fails loudly and specifically here instead of letting the SDK reject the
+ * built operation with an opaque "destination is invalid", or letting a
+ * classic payment silently target the wrong address.
+ */
 export async function bridgeViaContract(
   sourceAddress: string,
   cAddress: string,
@@ -386,37 +455,16 @@ export async function bridgeViaContract(
     throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
   }
 
-  if (!BRIDGE_CONTRACT_ID) {
-    return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network, onPhase);
-  }
-
-  const server = await getHorizonServer(network);
-  const passphrase = await getNetworkPassphrase(network);
-  const { Asset } = await import("@stellar/stellar-sdk");
-
-  // The contract always receives native XLM; cAddress is handled by the contract
-  const asset = Asset.native();
-
-  try {
-    return await buildSignAndSubmit(
-      sourceAddress,
-      BRIDGE_CONTRACT_ID,
-      asset,
-      amount,
-      network,
-      server,
-      passphrase,
-      onPhase
+  if (isCAddress(cAddress)) {
+    const reason = BRIDGE_CONTRACT_ID
+      ? "the configured bridge contract cannot yet be invoked from this app"
+      : "no bridge contract is configured";
+    throw new Error(
+      `Bridging to a Soroban C-address isn't supported yet: classic Stellar payments can't target contract addresses, and ${reason}. Track progress on this in issue #284.`
     );
-  } catch (e: unknown) {
-    const err = e as { response?: { data?: { extras?: { result_codes?: unknown } } } };
-    if (err.response?.data?.extras?.result_codes) {
-      throw new Error(
-        `Transaction failed: ${JSON.stringify(err.response.data.extras.result_codes)}`
-      );
-    }
-    throw e;
   }
+
+  return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
 }
 
 export function getExplorerUrl(

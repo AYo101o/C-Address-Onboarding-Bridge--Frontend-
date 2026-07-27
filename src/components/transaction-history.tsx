@@ -20,6 +20,8 @@ interface Props {
   transactions: BridgeTransactionData[];
   loading: boolean;
   network: StellarNetwork;
+  /** When provided, the "View all" link points to this account's history. (#294) */
+  address?: string;
 }
 
 const TransactionItem = memo(function TransactionItem({ tx, network }: { tx: BridgeTransactionData; network: Props["network"] }) {
@@ -67,7 +69,7 @@ const TransactionItem = memo(function TransactionItem({ tx, network }: { tx: Bri
   );
 });
 
-function TransactionHistory({ transactions, loading, network }: Props) {
+function TransactionHistory({ transactions, loading, network, address }: Props) {
   const items = useMemo(
     () => transactions.map((tx) => <TransactionItem key={tx.id} tx={tx} network={network} />),
     [transactions, network]
@@ -90,8 +92,14 @@ function TransactionHistory({ transactions, loading, network }: Props) {
         <div className="divide-y divide-[var(--border)]">{items}</div>
       )}
       <div className="p-4 border-t border-[var(--border)]">
+        {/* Link to the account's specific transaction history when an address
+            is available, otherwise fall back to the explorer home. (#294) */}
         <a
-          href={`https://stellar.expert/explorer/${network === "PUBLIC" ? "public" : "testnet"}`}
+          href={
+            address
+              ? getExplorerUrl(network, "account", address)
+              : `https://stellar.expert/explorer/${network === "PUBLIC" ? "public" : "testnet"}`
+          }
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"

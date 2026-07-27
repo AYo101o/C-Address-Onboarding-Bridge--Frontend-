@@ -30,10 +30,30 @@ import { useFeatureFlags } from "@/contexts/FeatureFlagContext";
 export function FeatureFlagPanel() {
    const { flags, devOverrides, isEnabled, setOverride, clearOverride } = useFeatureFlags();
   const [isOpen, setIsOpen] = useState(false);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleToggleOpen = () => setIsOpen((open) => !open);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    panelRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsOpen(false);
+        toggleButtonRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   if (process.env.NODE_ENV !== 'development') return null;
 
- 
+
   return (
     <>
       {/* Toggle button — fixed bottom-right */}
