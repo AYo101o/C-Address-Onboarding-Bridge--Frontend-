@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
 
 type Step = "form" | "review" | "confirm";
@@ -23,6 +23,7 @@ export default function BridgePage() {
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
+  const validAmount = !amount || isValidStellarAmount(amount);
 
   // Balance available for the currently-selected asset. XLM lives in `total`;
   // other assets (e.g. USDC) come from the matching entry in `balances`.
@@ -48,7 +49,7 @@ export default function BridgePage() {
     !Number.isNaN(Number(amount)) &&
     Number(amount) > spendableBalance;
 
-  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && !insufficientBalance && txStatus === "idle";
+  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && validAmount && !insufficientBalance && txStatus === "idle";
 
   const handleUseConnected = () => {
     if (address) {
@@ -79,7 +80,8 @@ export default function BridgePage() {
         toAddress,
         amount,
         asset,
-        network
+        network,
+        (phase) => setTxStatus(phase)
       );
       setTxHash(result.hash);
       setTxStatus("success");
@@ -194,6 +196,11 @@ export default function BridgePage() {
                       <option>USDC</option>
                     </select>
                   </div>
+                  {!validAmount && amount && (
+                    <p className="text-xs text-[var(--error)] mt-1">
+                      Invalid amount. Enter a positive number with up to 7 decimal places (e.g. "10" or "0.5").
+                    </p>
+                  )}
                   {insufficientBalance && (
                     <p className="text-xs text-[var(--error)] mt-1">
                       Insufficient balance. Available:{" "}

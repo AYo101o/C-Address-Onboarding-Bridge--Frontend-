@@ -287,7 +287,8 @@ async function buildSignAndSubmit(
   amount: string,
   network: StellarNetwork,
   server: Horizon.Server,
-  passphrase: string
+  passphrase: string,
+  onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
   const { TransactionBuilder, Operation, BASE_FEE } = await import("@stellar/stellar-sdk");
 
@@ -311,6 +312,7 @@ async function buildSignAndSubmit(
         .setTimeout(30)
         .build();
 
+      onPhase?.("signing");
       const signedResult = await signTransaction(tx.toXDR(), {
         networkPassphrase: passphrase,
       });
@@ -322,6 +324,7 @@ async function buildSignAndSubmit(
       const signedXDR = (signedResult as { signedTxXdr: string }).signedTxXdr;
       const signedTx = TransactionBuilder.fromXDR(signedXDR, passphrase);
 
+      onPhase?.("submitting");
       const submitResult = await server.submitTransaction(signedTx);
       return {
         hash: submitResult.hash,
@@ -337,7 +340,8 @@ export async function buildAndSubmitPayment(
   destinationAddress: string,
   amount: string,
   assetCode: string,
-  network: StellarNetwork
+  network: StellarNetwork,
+  onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
@@ -365,7 +369,8 @@ export async function buildAndSubmitPayment(
     amount,
     network,
     server,
-    passphrase
+    passphrase,
+    onPhase
   );
 }
 
@@ -374,14 +379,15 @@ export async function bridgeViaContract(
   cAddress: string,
   amount: string,
   assetCode: string,
-  network: StellarNetwork
+  network: StellarNetwork,
+  onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
   if (!isValidStellarAmount(amount)) {
     throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
   }
 
   if (!BRIDGE_CONTRACT_ID) {
-    return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
+    return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network, onPhase);
   }
 
   const server = await getHorizonServer(network);
@@ -399,7 +405,8 @@ export async function bridgeViaContract(
       amount,
       network,
       server,
-      passphrase
+      passphrase,
+      onPhase
     );
   } catch (e: unknown) {
     const err = e as { response?: { data?: { extras?: { result_codes?: unknown } } } };
