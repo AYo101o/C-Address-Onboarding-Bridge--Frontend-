@@ -3,7 +3,7 @@ export type AddressType = "G" | "C";
 export interface WalletState {
   address: string | null;
   publicKey: string | null;
-  network: "PUBLIC" | "TESTNET";
+  network: StellarNetwork;
   isConnected: boolean;
 }
 
@@ -48,9 +48,16 @@ export const STELLAR_NETWORK = {
   TESTNET: "TESTNET",
 } as const;
 
+/** The set of supported Stellar network identifiers. */
+export type StellarNetwork = keyof typeof STELLAR_NETWORK;
+
+// SDF does not operate a free public mainnet Soroban RPC, so PUBLIC must be
+// configured explicitly; getSorobanRpcServer throws a clear error if it's
+// unset rather than resolving to a non-existent hostname. TESTNET defaults to
+// the official SDF endpoint but can still be overridden per-environment.
 export const SOROBAN_RPC_URL = {
-  PUBLIC: "https://soroban-rpc.stellar.org",
-  TESTNET: "https://soroban-rpc-testnet.stellar.org",
+  PUBLIC: process.env.NEXT_PUBLIC_SOROBAN_RPC_URL_PUBLIC ?? "",
+  TESTNET: process.env.NEXT_PUBLIC_SOROBAN_RPC_URL_TESTNET ?? "https://soroban-testnet.stellar.org",
 } as const;
 
 export const HORIZON_URL = {
@@ -59,6 +66,19 @@ export const HORIZON_URL = {
 } as const;
 
 export const BRIDGE_CONTRACT_ID = process.env.NEXT_PUBLIC_BRIDGE_CONTRACT_ID || "";
+
+/**
+ * The Stellar network the app connects to. Driven by the `NEXT_PUBLIC_STELLAR_NETWORK`
+ * environment variable. Any value other than `"PUBLIC"` (exact, case-sensitive)
+ * falls back to `"TESTNET"` so misconfigured deployments never silently send
+ * real funds on mainnet.
+ *
+ * Set in your .env.local:
+ *   NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC   # mainnet
+ *   NEXT_PUBLIC_STELLAR_NETWORK=TESTNET  # testnet (default)
+ */
+export const APP_NETWORK: "PUBLIC" | "TESTNET" =
+  process.env.NEXT_PUBLIC_STELLAR_NETWORK === "PUBLIC" ? "PUBLIC" : "TESTNET";
 
 export const CEX_LIST: CexConfig[] = [
   {

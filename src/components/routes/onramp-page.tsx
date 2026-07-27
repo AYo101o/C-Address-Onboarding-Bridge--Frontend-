@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 
@@ -32,22 +32,60 @@ const providers = [
   },
 ];
 
+export function getProviderFeeRate(providerId: string): number {
+  return providerId === "moonpay" ? 0.045 : 0.05;
+}
+
+export function calculateOnrampFeeAndReceive(amount: number, providerId: string) {
+  const feeRate = getProviderFeeRate(providerId);
+  const fee = amount * feeRate;
+  const receive = amount - fee;
+  return { feeRate, fee, receive };
+}
+
+function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string): string {
+  const params =
+    p.id === "moonpay"
+      ? new URLSearchParams({
+          apiKey: p.apiKey,
+          walletAddress: cAddress,
+          currencyCode: "usdc_xlm",
+          baseCurrencyAmount: fiatAmount,
+          baseCurrencyCode: "usd",
+        })
+      : new URLSearchParams({
+          apiKey: p.apiKey,
+          walletAddress: cAddress,
+          network: "stellar",
+          defaultCryptoCurrency: "USDC",
+          defaultFiatAmount: fiatAmount,
+          fiatCurrency: "USD",
+        });
+  return `${p.baseUrl}?${params}`;
+}
+
 export default function OnrampPage() {
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("moonpay");
   const [step, setStep] = useState<"form" | "redirect">("form");
   const [error, setError] = useState<string | null>(null);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
+  const provider = providers.find((p) => p.id === selectedProvider);
   const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
   const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
   const canProceed = cAddress && fiatAmount && validAddress && validAmount;
+
+  const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
+    Number(fiatAmount) || 0,
+    selectedProvider
+  );
 
   const handleProviderRedirect = () => {
     if (!canProceed) return;
     setError(null);
 
-    const provider = providers.find((p) => p.id === selectedProvider);
     if (!provider) return;
 
     if (!provider.apiKey) {
@@ -55,24 +93,13 @@ export default function OnrampPage() {
       return;
     }
 
+    const url = buildProviderUrl(provider, cAddress, fiatAmount);
+    setRedirectUrl(url);
     setStep("redirect");
-
-    const params = new URLSearchParams({
-      apiKey: provider.apiKey,
-      walletAddress: cAddress,
-      walletChain: "Stellar",
-      defaultCryptoCurrency: "USDC",
-      defaultFiatAmount: fiatAmount,
-    });
-
-    const url = `${provider.baseUrl}?${params}`;
-
-    setTimeout(() => {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }, 1500);
+    // Open synchronously within the click handler to preserve user activation
+    // so default popup blockers do not block the new tab.
+    window.open(url, "_blank", "noopener,noreferrer");
   };
-
-  const provider = providers.find((p) => p.id === selectedProvider);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -95,6 +122,7 @@ export default function OnrampPage() {
                       <button
                         key={p.id}
                         onClick={() => { setSelectedProvider(p.id); setError(null); }}
+                        aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           selectedProvider === p.id
                             ? "border-[var(--primary)] bg-[var(--primary)]/5"
@@ -165,14 +193,14 @@ export default function OnrampPage() {
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
                     <span>
-                      -${fiatAmount ? (Number(fiatAmount) * (selectedProvider === "moonpay" ? 0.045 : 0.05)).toFixed(2) : "0"}
+                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Est. receive</span>
                     <span className="font-semibold">
                       {fiatAmount && validAmount
-                        ? `~${(Number(fiatAmount) * 0.95 * (selectedProvider === "moonpay" ? 1 : 0.95)).toFixed(2)} USDC`
+                        ? `~${receiveAmount.toFixed(2)} USDC`
                         : "—"}
                     </span>
                   </div>
@@ -203,14 +231,27 @@ export default function OnrampPage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Redirecting to {provider?.name}</h3>
                 <p className="text-sm text-[var(--text-muted)] mb-4">
-                  You will be redirected to complete your purchase. Funds will be sent to your C-address.
+                  A new tab has been opened to complete your purchase. Funds will be sent to your C-address.
                 </p>
-                <button
-                  onClick={() => setStep("form")}
-                  className="text-sm text-[var(--primary-light)] hover:underline"
-                >
-                  Go back
-                </button>
+                {redirectUrl && (
+                  <a
+                    href={redirectUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Checkout didn&apos;t open? Continue to {provider?.name}
+                  </a>
+                )}
+                <div className="mt-4">
+                  <button
+                    onClick={() => { setStep("form"); setRedirectUrl(null); }}
+                    className="text-sm text-[var(--primary-light)] hover:underline"
+                  >
+                    Go back
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -1,16 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2 } from "lucide-react";
+import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2, X } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl } from "@/lib/stellar";
 import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+
+// Content check for the 30s poll: transaction fields are derived from
+// immutable Horizon records, so the only meaningful changes are which
+// transactions exist (id) and their status. When nothing changed we keep the
+// previous array reference so memoized <TransactionHistory> can skip its
+// re-render entirely.
+function areTransactionsEqual(a: BridgeTransaction[], b: BridgeTransaction[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].status !== b[i].status) return false;
+  }
+  return true;
+}
 
 export default function DashboardPage() {
   const { isConnected, address, network, connect } = useWallet();
-  const [copied, setCopied] = useState(false);
+  const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
   const [balance, setBalance] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<BridgeTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,25 +33,39 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isConnected || !address) return;
-    const fetchData = async () => {
-      setLoading(true);
+    // Ignore results from any fetch that was in flight when this effect
+    // re-ran (e.g. a rapid network switch). Without this, a slow response
+    // for the previous network could overwrite fresh data for the current one.
+    let cancelled = false;
+    // isInitial distinguishes the first load from background poll ticks.
+    // We only show the loading spinner on the initial fetch so that the UI
+    // does not flash back to a skeleton state on every 30-second poll. (#292)
+    const fetchData = async (isInitial: boolean) => {
+      if (isInitial) setLoading(true);
       setError(null);
       try {
         const [balResult, txResult] = await Promise.all([
           getAccountBalances(address, network),
           fetchRecentTransactions(address, network, 10),
         ]);
+        if (cancelled) return;
         setBalance(balResult.total);
-        setTransactions(txResult);
+        // Reuse the previous reference when nothing changed so React bails out
+        // of re-rendering the memoized transaction list.
+        setTransactions((prev) => (areTransactionsEqual(prev, txResult) ? prev : txResult));
       } catch (e: unknown) {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to fetch data");
       } finally {
-        setLoading(false);
+        if (!cancelled && isInitial) setLoading(false);
       }
     };
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    fetchData(true);
+    const interval = setInterval(() => fetchData(false), 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isConnected, address, network]);
 
   const confirmedCount = transactions.filter((t) => t.status === "confirmed").length;
@@ -44,9 +73,7 @@ export default function DashboardPage() {
 
   const handleCopy = () => {
     if (!address) return;
-    navigator.clipboard.writeText(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copyToClipboard(address);
   };
 
   if (!isConnected) {
@@ -98,9 +125,22 @@ export default function DashboardPage() {
             <code className="text-sm font-mono">
               {address?.slice(0, 8)}...{address?.slice(-8)}
             </code>
-            <button onClick={handleCopy} className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors">
-              {copied ? <Check className="w-3 h-3 text-[var(--success)]" /> : <Copy className="w-3 h-3 text-[var(--text-muted)]" />}
+            <button
+              onClick={handleCopy}
+              title={copyStatus === "error" ? "Copy failed — check clipboard permissions" : "Copy address"}
+              className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors"
+            >
+              {copyStatus === "copied" ? (
+                <Check className="w-3 h-3 text-[var(--success)]" />
+              ) : copyStatus === "error" ? (
+                <X className="w-3 h-3 text-[var(--error,#ef4444)]" />
+              ) : (
+                <Copy className="w-3 h-3 text-[var(--text-muted)]" />
+              )}
             </button>
+            {copyStatus === "error" && (
+              <span className="text-xs text-[var(--error,#ef4444)]">Copy failed</span>
+            )}
           </div>
           <div className="text-xs text-[var(--text-muted)] mt-1">
             {network === "PUBLIC" ? "Mainnet" : "Testnet"}
@@ -122,7 +162,7 @@ export default function DashboardPage() {
           <div className="text-xs text-[var(--text-muted)] mb-1">XLM Balance</div>
           {loading ? (
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
               <span className="text-xs text-[var(--text-muted)]">Loading...</span>
             </div>
           ) : (
@@ -139,7 +179,7 @@ export default function DashboardPage() {
           <div className="text-xs text-[var(--text-muted)] mb-1">Transactions</div>
           {loading ? (
             <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
               <span className="text-xs text-[var(--text-muted)]">Loading...</span>
             </div>
           ) : (
@@ -200,7 +240,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <TransactionHistory transactions={transactions} loading={loading} network={network} />
+      <TransactionHistory transactions={transactions} loading={loading} network={network} address={address ?? undefined} />
     </div>
   );
 }

@@ -10,7 +10,11 @@
   --surface: #141519;
   --surface-2: #1e1f25;
   --border: #2a2b32;
-  --text-muted: #8a8c93;
+  /* WCAG AA audit (see src/__tests__/contrast.test.ts): the previous #8a8c93
+     cleared 4.5:1 only by a hair over tinted overlays (secondary/10% = 4.61:1).
+     #a0a2aa keeps the same gray-blue hue with a comfortable margin (>=6:1 on
+     every surface it is used over). */
+  --text-muted: #a0a2aa;
   --success: #00b894;
   --warning: #fdcb6e;
   --error: #e17055;
@@ -96,3 +100,25 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(108, 92, 231, 0.12);
 }
+
+/* Reduced motion preference support (A11Y) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation: none !important;
+  }
+
+  .card-hover:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+

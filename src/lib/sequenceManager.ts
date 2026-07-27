@@ -41,9 +41,10 @@ export async function getNextSequenceNumber(
   }
 
   // Cache miss or expired — fetch from network
-  const sequence = await fetchSequenceFromNetwork(accountId, server);
-  cache.set(accountId, { sequence, fetchedAt: now });
-  return sequence;
+  const currentSequence = await fetchSequenceFromNetwork(accountId, server);
+  const nextSequence = currentSequence + 1n;
+  cache.set(accountId, { sequence: nextSequence, fetchedAt: now });
+  return nextSequence;
 }
 
 /**

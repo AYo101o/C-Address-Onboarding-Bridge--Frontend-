@@ -2,6 +2,7 @@ import React, { memo, useMemo } from "react";
 import { ArrowLeftRight, CreditCard, Building2, ExternalLink, Loader2 } from "lucide-react";
 import type { BridgeTransactionData } from "@/lib/stellar";
 import { getExplorerUrl } from "@/lib/stellar";
+import type { StellarNetwork } from "@/lib/types";
 
 const typeConfig: Record<string, { icon: typeof ArrowLeftRight; label: string; color: string }> = {
   "g-to-c": { icon: ArrowLeftRight, label: "G → C Bridge", color: "text-[var(--primary-light)]" },
@@ -18,7 +19,9 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 interface Props {
   transactions: BridgeTransactionData[];
   loading: boolean;
-  network: "PUBLIC" | "TESTNET";
+  network: StellarNetwork;
+  /** When provided, the "View all" link points to this account's history. (#294) */
+  address?: string;
 }
 
 const TransactionItem = memo(function TransactionItem({ tx, network }: { tx: BridgeTransactionData; network: Props["network"] }) {
@@ -66,7 +69,7 @@ const TransactionItem = memo(function TransactionItem({ tx, network }: { tx: Bri
   );
 });
 
-function TransactionHistory({ transactions, loading, network }: Props) {
+function TransactionHistory({ transactions, loading, network, address }: Props) {
   const items = useMemo(
     () => transactions.map((tx) => <TransactionItem key={tx.id} tx={tx} network={network} />),
     [transactions, network]
@@ -79,7 +82,7 @@ function TransactionHistory({ transactions, loading, network }: Props) {
       </div>
       {loading ? (
         <div className="p-12 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-[var(--text-muted)]" />
+          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
         </div>
       ) : transactions.length === 0 ? (
         <div className="p-12 text-center">
@@ -89,8 +92,14 @@ function TransactionHistory({ transactions, loading, network }: Props) {
         <div className="divide-y divide-[var(--border)]">{items}</div>
       )}
       <div className="p-4 border-t border-[var(--border)]">
+        {/* Link to the account's specific transaction history when an address
+            is available, otherwise fall back to the explorer home. (#294) */}
         <a
-          href={`https://stellar.expert/explorer/${network === "PUBLIC" ? "public" : "testnet"}`}
+          href={
+            address
+              ? getExplorerUrl(network, "account", address)
+              : `https://stellar.expert/explorer/${network === "PUBLIC" ? "public" : "testnet"}`
+          }
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"

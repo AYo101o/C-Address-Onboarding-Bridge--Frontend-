@@ -3,10 +3,19 @@
 import { useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, bridgeViaContract, getExplorerUrl, getAccountBalances } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance } from "@/lib/stellar";
+import type { AccountBalances } from "@/lib/stellar";
 
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
+
+// Classic Stellar payments cannot target a Soroban C-address, and the
+// Soroban smart-contract transfer path (SAC invocation via prepareTransaction)
+// hasn't shipped yet — see issue #284. Block submission with an honest
+// message instead of letting users hit an opaque "destination is invalid"
+// error after signing.
+const BRIDGING_UNAVAILABLE_MESSAGE =
+  "G → C bridging isn't live yet: classic Stellar payments can't reach Soroban contract addresses, and the Soroban transfer path hasn't shipped. Follow progress in issue #284.";
 
 export default function BridgePage() {
   const { isConnected, address, network, connect } = useWallet();
@@ -18,12 +27,41 @@ export default function BridgePage() {
   const [txStatus, setTxStatus] = useState<TxStatus>("idle");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
-  const [sourceBalance, setSourceBalance] = useState<string | null>(null);
+  const [sourceBalances, setSourceBalances] = useState<AccountBalances | null>(null);
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
-  const validAmount = !!amount && /^\d+(\.\d{1,2})?$/.test(amount);
-  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && validAmount && txStatus === "idle";
+  const validAmount = !amount || isValidStellarAmount(amount);
+
+  // Balance available for the currently-selected asset. XLM lives in `total`;
+  // other assets (e.g. USDC) come from the matching entry in `balances`.
+  const availableBalance =
+    sourceBalances === null
+      ? null
+      : asset === "XLM"
+        ? sourceBalances.total
+        : sourceBalances.balances.find((b) => b.asset === asset)?.amount ?? "0";
+
+  // Spendable balance leaves the XLM minimum reserve untouched; the reserve is
+  // only held in XLM, so non-XLM assets can be sent down to zero.
+  const spendableBalance =
+    availableBalance === null
+      ? null
+      : asset === "XLM"
+        ? Number(availableBalance) - Number(getAccountMinimumBalance())
+        : Number(availableBalance);
+
+  const insufficientBalance =
+    spendableBalance !== null &&
+    amount !== "" &&
+    !Number.isNaN(Number(amount)) &&
+    Number(amount) > spendableBalance;
+
+  // No Soroban transfer path is implemented yet, so no destination this form
+  // accepts (validTo requires a C-address) can actually be bridged. See #284.
+  const bridgingBlocked = Boolean(toAddress) && validTo;
+
+  const canProceed = fromAddress && toAddress && amount && validFrom && validTo && !insufficientBalance && !bridgingBlocked && txStatus === "idle";
 
   const handleUseConnected = () => {
     if (address) {
@@ -34,7 +72,7 @@ export default function BridgePage() {
 
   const checkBalance = async (addr: string) => {
     const result = await getAccountBalances(addr, network);
-    setSourceBalance(result.total);
+    setSourceBalances(result);
   };
 
   const handleSubmit = () => {
@@ -54,7 +92,8 @@ export default function BridgePage() {
         toAddress,
         amount,
         asset,
-        network
+        network,
+        (phase) => setTxStatus(phase)
       );
       setTxHash(result.hash);
       setTxStatus("success");
@@ -90,23 +129,21 @@ export default function BridgePage() {
                   <label className="block text-sm font-medium mb-2">From (G-address)</label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                     <input
-                       type="text"
-                       value={fromAddress}
-                       onChange={(e) => {
-                         setFromAddress(e.target.value);
-                         setSourceBalance(null);
-                       }}
-                       placeholder={isConnected ? address! : "GABC...DEF or connect wallet"}
-                       aria-invalid={!validFrom && !!fromAddress}
-                       aria-describedby={!validFrom && fromAddress ? "from-address-error" : undefined}
-                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                       disabled={txStatus !== "idle"}
-                     />
-                   </div>
-                   {!validFrom && fromAddress && (
-                     <p id="from-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid Stellar address</p>
-                   )}
+                    <input
+                      type="text"
+                      value={fromAddress}
+                      onChange={(e) => {
+                        setFromAddress(e.target.value);
+                        setSourceBalances(null);
+                      }}
+                      placeholder={isConnected ? address! : "GABC...DEF or connect wallet"}
+                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                      disabled={txStatus !== "idle"}
+                    />
+                  </div>
+                  {!validFrom && fromAddress && (
+                    <p className="text-xs text-[var(--error)] mt-1">Invalid Stellar address</p>
+                  )}
                   {isConnected && (
                     <button
                       onClick={handleUseConnected}
@@ -115,9 +152,9 @@ export default function BridgePage() {
                       Use connected wallet
                     </button>
                   )}
-                  {sourceBalance !== null && (
+                  {availableBalance !== null && (
                     <p className="text-xs text-[var(--text-muted)] mt-1">
-                      Balance: {parseFloat(sourceBalance).toFixed(2)} XLM
+                      Balance: {parseFloat(availableBalance).toFixed(2)} {asset}
                     </p>
                   )}
                 </div>
@@ -150,35 +187,59 @@ export default function BridgePage() {
                    )}
                 </div>
 
-                 <div>
-                   <label className="block text-sm font-medium mb-2">Amount</label>
-                   <div className="flex gap-3">
-                     <div className="relative flex-1">
-                       <input
-                         type="text"
-                         value={amount}
-                         onChange={(e) => setAmount(e.target.value)}
-                         placeholder="0.00"
-                         aria-invalid={!!amount && !validAmount}
-                         aria-describedby={!validAmount && amount ? "amount-error" : undefined}
-                         className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                         disabled={txStatus !== "idle"}
-                       />
-                     </div>
-                     <select
-                       value={asset}
-                       onChange={(e) => setAsset(e.target.value)}
-                       className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                       disabled={txStatus !== "idle"}
-                     >
-                       <option>XLM</option>
-                       <option>USDC</option>
-                     </select>
-                   </div>
-                   {!validAmount && amount && (
-                     <p id="amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
-                   )}
-                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Amount</label>
+                  <div className="flex gap-3">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                        disabled={txStatus !== "idle"}
+                      />
+                      {spendableBalance !== null && spendableBalance > 0 && txStatus === "idle" && (
+                        <button
+                          type="button"
+                          onClick={() => setAmount(Math.max(spendableBalance, 0).toFixed(7))}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-xs font-semibold bg-[var(--primary)]/10 text-[var(--primary-light)] hover:bg-[var(--primary)]/20 transition-colors"
+                          aria-label="Fill maximum available balance"
+                        >
+                          Max
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={asset}
+                      onChange={(e) => setAsset(e.target.value)}
+                      className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                      disabled={txStatus !== "idle"}
+                    >
+                      <option>XLM</option>
+                      <option>USDC</option>
+                    </select>
+                  </div>
+                  {!validAmount && amount && (
+                    <p className="text-xs text-[var(--error)] mt-1">
+                      Invalid amount. Enter a positive number with up to 7 decimal places (e.g. "10" or "0.5").
+                    </p>
+                  )}
+                  {insufficientBalance && (
+                    <p className="text-xs text-[var(--error)] mt-1">
+                      Insufficient balance. Available:{" "}
+                      {spendableBalance !== null ? Math.max(spendableBalance, 0).toFixed(2) : "0.00"} {asset}
+                      {asset === "XLM" ? " (after minimum reserve)" : ""}
+                    </p>
+                  )}
+                </div>
+
+                {bridgingBlocked && (
+                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[var(--text-muted)]">{BRIDGING_UNAVAILABLE_MESSAGE}</p>
+                  </div>
+                )}
 
                 <button
                   onClick={handleSubmit}
@@ -243,7 +304,7 @@ export default function BridgePage() {
                   >
                     {txStatus === "signing" || txStatus === "submitting" ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
                         {txStatus === "signing" ? "Signing..." : "Submitting..."}
                       </>
                     ) : (
@@ -311,12 +372,12 @@ export default function BridgePage() {
             <h3 className="font-semibold mb-3">About G → C Bridging</h3>
             <ul className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">
-                <Check className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />
-                <span>Bridge XLM or USDC from any G-address</span>
+                <AlertCircle className="w-4 h-4 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                <span>Not yet available — the Soroban contract-transfer step hasn&apos;t shipped (issue #284)</span>
               </li>
               <li className="flex gap-2">
                 <Check className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />
-                <span>Supports all Soroban C-addresses</span>
+                <span>Will support XLM or USDC from any G-address once live</span>
               </li>
               <li className="flex gap-2">
                 <Check className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />
