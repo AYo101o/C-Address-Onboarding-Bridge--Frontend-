@@ -13,6 +13,7 @@ import {
   Horizon,
   rpc,
   Account,
+  StrKey,
 } from "@stellar/stellar-sdk";
 import { BRIDGE_CONTRACT_ID } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
@@ -28,17 +29,14 @@ const SOROBAN_RPC_URLS = {
 };
 
 export async function getHorizonServer(network: "PUBLIC" | "TESTNET"): Promise<Horizon.Server> {
-  const { Horizon } = await import("@stellar/stellar-sdk");
   return new Horizon.Server(HORIZON_URLS[network]);
 }
 
 export async function getSorobanRpcServer(network: "PUBLIC" | "TESTNET"): Promise<rpc.Server> {
-  const { rpc } = await import("@stellar/stellar-sdk");
   return new rpc.Server(SOROBAN_RPC_URLS[network]);
 }
 
 export async function getNetworkPassphrase(network: "PUBLIC" | "TESTNET"): Promise<string> {
-  const { Networks } = await import("@stellar/stellar-sdk");
   return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
 }
 
@@ -84,16 +82,27 @@ export async function getCurrentNetwork(): Promise<"PUBLIC" | "TESTNET"> {
   }
 }
 
+// Validate against the SDK's StrKey, which enforces the correct base32
+// alphabet (A-Z, 2-7 — no 0/1/8/9) and the trailing CRC16 checksum. A
+// hand-rolled regex cannot verify the checksum and, as [G|C] showed, is easy
+// to get subtly wrong (that character class also accepted a leading '|').
 export function isValidStellarAddress(address: string): boolean {
-  return /^[G|C][A-Z0-9]{55}$/.test(address);
+  return StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address);
+}
+
+export function isValidStellarAmount(amount: string): boolean {
+  if (!amount || typeof amount !== "string") return false;
+  if (!/^\d+(\.\d{1,7})?$/.test(amount)) return false;
+  const num = Number(amount);
+  return !isNaN(num) && num > 0;
 }
 
 export function isCAddress(address: string): boolean {
-  return address.startsWith("C") && address.length === 56;
+  return StrKey.isValidContract(address);
 }
 
 export function isGAddress(address: string): boolean {
-  return address.startsWith("G") && address.length === 56;
+  return StrKey.isValidEd25519PublicKey(address);
 }
 
 export interface PaymentResult {
@@ -193,10 +202,12 @@ export async function buildAndSubmitPayment(
   assetCode: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<PaymentResult> {
+  if (!isValidStellarAmount(amount)) {
+    throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
+  }
+
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
-  type AssetType = InstanceType<typeof Asset>;
 
   const result = await withSequenceRetry(
     sourceAddress,
@@ -264,13 +275,16 @@ export async function bridgeViaContract(
   assetCode: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<PaymentResult> {
+  if (!isValidStellarAmount(amount)) {
+    throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
+  }
+
   if (!BRIDGE_CONTRACT_ID) {
     return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
   }
 
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
-  const { TransactionBuilder, Operation, BASE_FEE, Asset } = await import("@stellar/stellar-sdk");
 
   const result = await withSequenceRetry(
     sourceAddress,

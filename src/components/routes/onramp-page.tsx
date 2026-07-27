@@ -32,6 +32,17 @@ const providers = [
   },
 ];
 
+export function getProviderFeeRate(providerId: string): number {
+  return providerId === "moonpay" ? 0.045 : 0.05;
+}
+
+export function calculateOnrampFeeAndReceive(amount: number, providerId: string) {
+  const feeRate = getProviderFeeRate(providerId);
+  const fee = amount * feeRate;
+  const receive = amount - fee;
+  return { feeRate, fee, receive };
+}
+
 export default function OnrampPage() {
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
@@ -43,25 +54,9 @@ export default function OnrampPage() {
   const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
   const canProceed = cAddress && fiatAmount && validAddress && validAmount;
 
-  const provider = useMemo(
-    () => providers.find((p) => p.id === selectedProvider),
-    [selectedProvider]
-  );
-
-  const feeAmount = useMemo(
-    () =>
-      fiatAmount
-        ? (Number(fiatAmount) * (selectedProvider === "moonpay" ? 0.045 : 0.05)).toFixed(2)
-        : "0",
-    [fiatAmount, selectedProvider]
-  );
-
-  const estReceive = useMemo(
-    () =>
-      fiatAmount && validAmount
-        ? `~${(Number(fiatAmount) * 0.95 * (selectedProvider === "moonpay" ? 1 : 0.95)).toFixed(2)} USDC`
-        : "—",
-    [fiatAmount, validAmount, selectedProvider]
+  const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
+    Number(fiatAmount) || 0,
+    selectedProvider
   );
 
   const handleProviderRedirect = () => {
@@ -113,6 +108,7 @@ export default function OnrampPage() {
                       <button
                         key={p.id}
                         onClick={() => { setSelectedProvider(p.id); setError(null); }}
+                        aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           selectedProvider === p.id
                             ? "border-[var(--primary)] bg-[var(--primary)]/5"
@@ -178,11 +174,17 @@ export default function OnrampPage() {
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
-                    <span>-${feeAmount}</span>
+                    <span>
+                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-[var(--text-muted)]">Est. receive</span>
-                    <span className="font-semibold">{estReceive}</span>
+                    <span className="font-semibold">
+                      {fiatAmount && validAmount
+                        ? `~${receiveAmount.toFixed(2)} USDC`
+                        : "—"}
+                    </span>
                   </div>
                 </div>
 
