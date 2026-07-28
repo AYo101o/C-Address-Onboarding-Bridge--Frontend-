@@ -49,6 +49,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, workflow, and tes
    | `NEXT_PUBLIC_MOONPAY_API_KEY` | For onramp | From [Moonpay dashboard](https://buy.moonpay.com) |
    | `NEXT_PUBLIC_TRANSAK_API_KEY` | For onramp | From [Transak dashboard](https://global.transak.com) |
 
+   > **Note — Horizon and Soroban RPC endpoints:**
+   > Horizon URLs are **hardcoded constants** in `src/lib/types.ts` (`HORIZON_URL`) and are not configurable via environment variables. They always resolve to `https://horizon.stellar.org` (PUBLIC) or `https://horizon-testnet.stellar.org` (TESTNET). Soroban RPC URLs for TESTNET also default to the SDF endpoint (`https://soroban-testnet.stellar.org`) but can be overridden via the env vars above. Soroban RPC for PUBLIC is empty by default — you must provide your own provider URL. See [Sequence Number Caching](docs/sequence-numbers.md) for details on how network requests are managed.
+
 3. Run:
 
    ```bash
@@ -91,6 +94,28 @@ src/
     ├── stellar.ts         # Stellar SDK + Freighter integration
     └── types.ts           # TypeScript types and constants
 ```
+
+## Testing against Testnet
+
+To test locally against Stellar Testnet, make sure both the app and your Freighter wallet are pointed at the same network. Mismatched network settings cause confusing failures (e.g. transactions referencing the wrong Horizon server or signing with the wrong network passphrase).
+
+1. **Set the env var** in `.env.local`:
+   ```bash
+   NEXT_PUBLIC_STELLAR_NETWORK=TESTNET
+   ```
+2. **Switch Freighter to Testnet**: open the Freighter extension, click the network selector, and choose **Testnet**.
+3. **Fund a test account**: use the [Stellar Testnet Friendbot](https://friendbot.stellar.org) to fund your G-address before testing.
+4. **Run the app**: `npm run dev`.
+
+If you want to use a custom Soroban RPC provider for Testnet (e.g. for performance or reliability testing), also set:
+
+```bash
+NEXT_PUBLIC_SOROBAN_RPC_URL_TESTNET=https://your-custom-rpc.example.com
+```
+
+The Horizon endpoint cannot be overridden — it is always `https://horizon-testnet.stellar.org` when `NEXT_PUBLIC_STELLAR_NETWORK=TESTNET`.
+
+> **Important:** Both Freighter and the app must be on the **same** network. If Freighter is set to Mainnet while the app is set to TESTNET (or vice versa), transaction signing will fail or submit to the wrong network.
 
 ## How It Works
 
