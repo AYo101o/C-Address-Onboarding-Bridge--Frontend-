@@ -18,6 +18,10 @@ The onboarding layer for Soroban dApps. Fund any Soroban smart account (C-addres
 - **TypeScript 5**
 - **Vitest** (testing)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, workflow, and testing expectations.
+
 ## Getting Started
 
 1. Clone and install:
