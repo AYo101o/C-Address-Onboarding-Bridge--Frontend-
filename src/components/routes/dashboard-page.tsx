@@ -14,7 +14,7 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 // transactions exist (id) and their status. When nothing changed we keep the
 // previous array reference so memoized <TransactionHistory> can skip its
 // re-render entirely.
-function areTransactionsEqual(a: BridgeTransaction[], b: BridgeTransaction[]): boolean {
+function areTransactionsEqual(a: BridgeTransactionData[], b: BridgeTransactionData[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const { isConnected, address, network, networkStatus, walletNetworkName, isNetworkSupported, connect } = useWallet();
   const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
   const [balance, setBalance] = useState<string | null>(null);
-  const [transactions, setTransactions] = useState<BridgeTransaction[]>([]);
+  const [transactions, setTransactions] = useState<BridgeTransactionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

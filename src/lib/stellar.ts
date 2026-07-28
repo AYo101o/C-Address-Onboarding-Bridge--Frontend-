@@ -181,19 +181,6 @@ export interface AccountBalances {
   unfunded?: boolean;
 }
 
-export interface BridgeTransactionData {
-  id: string;
-  fromAddress: string;
-  toAddress: string;
-  amount: string;
-  asset: string;
-  status: "pending" | "confirmed" | "failed";
-  timestamp: number;
-  type: "g-to-c" | "fiat" | "cex";
-  hash?: string;
-  memo?: string;
-}
-
 interface HorizonBalance {
   asset_type: string;
   asset_code?: string;
