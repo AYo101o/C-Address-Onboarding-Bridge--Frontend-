@@ -24,6 +24,9 @@ import { useState, useCallback, useRef } from "react";
 
 export type CopyStatus = "idle" | "copied" | "error";
 
+/** How long to show "copied" or "error" feedback before reverting to "idle". */
+const COPY_FEEDBACK_DURATION_MS = 2000;
+
 export interface UseCopyToClipboardReturn {
   /** Current state of the last copy attempt. */
   status: CopyStatus;
@@ -41,7 +44,7 @@ export interface UseCopyToClipboardReturn {
  *                       reverting to "idle". Pass 0 to disable auto-reset.
  *                       Defaults to 2000ms.
  */
-export function useCopyToClipboard(resetAfterMs = 2000): UseCopyToClipboardReturn {
+export function useCopyToClipboard(resetAfterMs = COPY_FEEDBACK_DURATION_MS): UseCopyToClipboardReturn {
   const [status, setStatus] = useState<CopyStatus>("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

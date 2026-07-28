@@ -13,6 +13,9 @@ import type { StellarNetwork } from "./types";
 
 const CACHE_TTL_MS = 30_000; // 30 seconds
 
+/** Base delay multiplied by attempt count on bad_seq retries. */
+const RETRY_BACKOFF_MS = 200;
+
 interface SequenceEntry {
   sequence: bigint;
   fetchedAt: number;
@@ -157,7 +160,7 @@ export async function withSequenceRetry<T>(
         attempts++;
         invalidateSequenceCache(accountId, network);
         // Small delay before retry to avoid thundering herd
-        await new Promise((resolve) => setTimeout(resolve, 200 * attempts));
+        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempts));
         continue;
       }
       throw error;

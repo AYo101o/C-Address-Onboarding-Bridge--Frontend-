@@ -411,7 +411,7 @@ async function buildSignAndSubmit(
             amount,
           })
         )
-        .setTimeout(30)
+        .setTimeout(TRANSACTION_TIMEOUT_SECONDS)
         .build();
 
       onPhase?.("signing");
