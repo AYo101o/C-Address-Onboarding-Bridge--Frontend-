@@ -46,7 +46,7 @@ export default function CexPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Step 1 */}
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <div className="card p-6">
             <h3 className="font-semibold mb-4">1. Select Your Exchange</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {CEX_LIST.map((cex) => (
@@ -69,7 +69,7 @@ export default function CexPage() {
           </div>
 
           {/* Step 2 — C-address input with validation */}
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <div className="card p-6">
             <h3 className="font-semibold mb-4">2. Enter Your C-Address</h3>
             <p className="text-xs text-[var(--text-muted)] mb-3">
               Your Soroban smart account address. C-addresses start with the letter{" "}
@@ -111,7 +111,7 @@ export default function CexPage() {
           </div>
 
           {/* Step 3 — Withdrawal details */}
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <div className="card p-6">
             <h3 className="font-semibold mb-4">3. Withdrawal Details for {selectedCex.name}</h3>
 
             {/* Bridge deposit address — coming soon (#299) */}
@@ -168,7 +168,7 @@ export default function CexPage() {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">Exchange Details</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -186,7 +186,7 @@ export default function CexPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">How It Works</h3>
             <ol className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">

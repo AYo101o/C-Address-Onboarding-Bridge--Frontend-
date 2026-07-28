@@ -101,6 +101,17 @@ body {
   box-shadow: 0 8px 30px rgba(108, 92, 231, 0.12);
 }
 
+/*
+ * Shared surface primitive.
+ * Encapsulates the repeated rounded-xl / border / bg-[var(--surface)] pattern.
+ * Padding is intentionally NOT included here — sections use p-5 (panels/stats)
+ * or p-6 (content-heavy form areas) as appropriate and that distinction should
+ * remain visible at the call-site.
+ */
+.card {
+  @apply rounded-xl border border-[var(--border)] bg-[var(--surface)];
+}
+
 /* Reduced motion preference support (A11Y) */
 @media (prefers-reduced-motion: reduce) {
   *,

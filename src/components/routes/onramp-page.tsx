@@ -112,7 +112,7 @@ export default function OnrampPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <div className="card p-6">
             {step === "form" && (
               <div className="space-y-6">
                 <div>
@@ -254,7 +254,7 @@ export default function OnrampPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">Supported Providers</h3>
             <div className="space-y-3">
               {providers.map((p) => (
@@ -269,7 +269,7 @@ export default function OnrampPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">How It Works</h3>
             <ol className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">
@@ -291,7 +291,7 @@ export default function OnrampPage() {
             </ol>
           </div>
 
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">Need Help?</h3>
             <p className="text-sm text-[var(--text-muted)] mb-3">
               Make sure your C-address is valid before continuing.
