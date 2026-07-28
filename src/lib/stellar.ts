@@ -18,6 +18,9 @@ import {
 import { BRIDGE_CONTRACT_ID, HORIZON_URL, SOROBAN_RPC_URL, type StellarNetwork, type BridgeTransactionData } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
 
+/** Stellar transaction validity window in seconds (passed to TransactionBuilder.setTimeout). */
+const TRANSACTION_TIMEOUT_SECONDS = 30;
+
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
   const { Horizon } = await import("@stellar/stellar-sdk");
   return new Horizon.Server(HORIZON_URL[network]);
@@ -346,7 +349,7 @@ async function buildSignAndSubmit(
             amount,
           })
         )
-        .setTimeout(30)
+        .setTimeout(TRANSACTION_TIMEOUT_SECONDS)
         .build();
 
       onPhase?.("signing");

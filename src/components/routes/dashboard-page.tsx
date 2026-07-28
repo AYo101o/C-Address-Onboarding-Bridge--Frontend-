@@ -9,6 +9,9 @@ import { getAccountBalances, fetchRecentTransactions, getExplorerUrl } from "@/l
 import type { BridgeTransactionData } from "@/lib/types";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
+/** How often the dashboard polls for updated balances and transactions. */
+const DASHBOARD_POLL_INTERVAL_MS = 30_000;
+
 // Content check for the 30s poll: transaction fields are derived from
 // immutable Horizon records, so the only meaningful changes are which
 // transactions exist (id) and their status. When nothing changed we keep the
@@ -61,7 +64,7 @@ export default function DashboardPage() {
       }
     };
     fetchData(true);
-    const interval = setInterval(() => fetchData(false), 30000);
+    const interval = setInterval(() => fetchData(false), DASHBOARD_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
