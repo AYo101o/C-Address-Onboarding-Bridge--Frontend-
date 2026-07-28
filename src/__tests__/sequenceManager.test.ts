@@ -33,7 +33,7 @@ describe("sequenceManager", () => {
       const mockAccount = { sequenceNumber: () => "100" };
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
-      const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
+      const result = await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
 
       expect(result).toBe(101n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledWith(testAccountId);
@@ -43,8 +43,8 @@ describe("sequenceManager", () => {
       const mockAccount = { sequenceNumber: () => "100" };
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
-      const first = await getNextSequenceNumber(testAccountId, mockHorizonServer);
-      const second = await getNextSequenceNumber(testAccountId, mockHorizonServer);
+      const first = await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
+      const second = await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
 
       expect(first).toBe(101n);
       expect(second).toBe(102n);
@@ -57,7 +57,7 @@ describe("sequenceManager", () => {
 
       const results = [];
       for (let i = 0; i < 5; i++) {
-        results.push(await getNextSequenceNumber(testAccountId, mockHorizonServer));
+        results.push(await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET"));
       }
 
       expect(results).toEqual([101n, 102n, 103n, 104n, 105n]);
@@ -69,7 +69,7 @@ describe("sequenceManager", () => {
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       // First call
-      await getNextSequenceNumber(testAccountId, mockHorizonServer);
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
 
       // Advance time past TTL (30 seconds)
       vi.advanceTimersByTime(31_000);
@@ -80,7 +80,7 @@ describe("sequenceManager", () => {
       });
 
       // Second call after TTL should refetch
-      const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
+      const result = await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
 
       expect(result).toBe(201n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
@@ -90,10 +90,137 @@ describe("sequenceManager", () => {
       const mockAccount = { sequenceNumber: () => "100" };
       (mockSorobanRpcServer.getAccount as Mock).mockResolvedValue(mockAccount);
 
-      const result = await getNextSequenceNumber(testAccountId, mockSorobanRpcServer);
+      const result = await getNextSequenceNumber(testAccountId, mockSorobanRpcServer, "TESTNET");
 
       expect(result).toBe(101n);
       expect(mockSorobanRpcServer.getAccount).toHaveBeenCalledWith(testAccountId);
+    });
+  });
+
+  // Regression for #290: the cache used to be keyed on the account address
+  // alone, so the same G-address served (and incremented) the other chain's
+  // sequence after a Freighter network switch inside the 30s TTL.
+  describe("network scoping", () => {
+    it("keeps the same address independent across networks", async () => {
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "100",
+      });
+
+      const testnetSeq = await getNextSequenceNumber(
+        testAccountId,
+        mockHorizonServer,
+        "TESTNET"
+      );
+      expect(testnetSeq).toBe(101n);
+
+      // Mainnet holds an unrelated sequence for the same address.
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "5000",
+      });
+
+      const publicSeq = await getNextSequenceNumber(
+        testAccountId,
+        mockHorizonServer,
+        "PUBLIC"
+      );
+
+      // Separate fetch, and no increment of the testnet entry.
+      expect(publicSeq).toBe(5001n);
+      expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
+    });
+
+    it("increments each network's entry independently within the TTL", async () => {
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "100",
+      });
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
+
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "5000",
+      });
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "PUBLIC");
+
+      // Back to testnet inside the TTL: continues the testnet series, not the
+      // mainnet one (the old behaviour returned 5002n here).
+      const nextTestnet = await getNextSequenceNumber(
+        testAccountId,
+        mockHorizonServer,
+        "TESTNET"
+      );
+      const nextPublic = await getNextSequenceNumber(
+        testAccountId,
+        mockHorizonServer,
+        "PUBLIC"
+      );
+
+      expect(nextTestnet).toBe(102n);
+      expect(nextPublic).toBe(5002n);
+      expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
+    });
+
+    it("invalidates only the (network, account) pair", async () => {
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "100",
+      });
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
+
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "5000",
+      });
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "PUBLIC");
+
+      invalidateSequenceCache(testAccountId, "TESTNET");
+
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "200",
+      });
+
+      // Testnet re-fetches...
+      expect(
+        await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET")
+      ).toBe(201n);
+      // ...while mainnet still serves its untouched cached entry.
+      expect(
+        await getNextSequenceNumber(testAccountId, mockHorizonServer, "PUBLIC")
+      ).toBe(5002n);
+      expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(3);
+    });
+
+    it("withSequenceRetry invalidates only the network it ran on", async () => {
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "5000",
+      });
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "PUBLIC");
+
+      (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
+        sequenceNumber: () => "100",
+      });
+
+      const badSeqError = {
+        response: { data: { extras: { result_codes: { transaction: "tx_bad_seq" } } } },
+      };
+
+      let calls = 0;
+      const fn = vi.fn(async (getSequence: () => Promise<bigint>) => {
+        await getSequence();
+        calls++;
+        if (calls === 1) throw badSeqError;
+        return "success";
+      });
+
+      const promise = withSequenceRetry(
+        testAccountId,
+        fn,
+        mockHorizonServer,
+        "TESTNET"
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // The mainnet entry survived the testnet retry's invalidation.
+      expect(
+        await getNextSequenceNumber(testAccountId, mockHorizonServer, "PUBLIC")
+      ).toBe(5002n);
     });
   });
 
@@ -103,10 +230,10 @@ describe("sequenceManager", () => {
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue(mockAccount);
 
       // Fetch and cache
-      await getNextSequenceNumber(testAccountId, mockHorizonServer);
+      await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
 
       // Invalidate cache
-      invalidateSequenceCache(testAccountId);
+      invalidateSequenceCache(testAccountId, "TESTNET");
 
       // Update mock to return different sequence
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
@@ -114,7 +241,7 @@ describe("sequenceManager", () => {
       });
 
       // Next call should refetch
-      const result = await getNextSequenceNumber(testAccountId, mockHorizonServer);
+      const result = await getNextSequenceNumber(testAccountId, mockHorizonServer, "TESTNET");
 
       expect(result).toBe(201n);
       expect(mockHorizonServer.loadAccount).toHaveBeenCalledTimes(2);
@@ -128,11 +255,11 @@ describe("sequenceManager", () => {
       const accountId2 = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBTUMXBQ";
 
       // Fetch both accounts
-      await getNextSequenceNumber(accountId1, mockHorizonServer);
-      await getNextSequenceNumber(accountId2, mockHorizonServer);
+      await getNextSequenceNumber(accountId1, mockHorizonServer, "TESTNET");
+      await getNextSequenceNumber(accountId2, mockHorizonServer, "TESTNET");
 
       // Invalidate only accountId1
-      invalidateSequenceCache(accountId1);
+      invalidateSequenceCache(accountId1, "TESTNET");
 
       // Update mock
       (mockHorizonServer.loadAccount as Mock).mockResolvedValue({
@@ -140,11 +267,11 @@ describe("sequenceManager", () => {
       });
 
       // Next call for accountId1 should refetch
-      const result1 = await getNextSequenceNumber(accountId1, mockHorizonServer);
+      const result1 = await getNextSequenceNumber(accountId1, mockHorizonServer, "TESTNET");
       expect(result1).toBe(201n);
 
       // Next call for accountId2 should use cache (102n from cached 101n)
-      const result2 = await getNextSequenceNumber(accountId2, mockHorizonServer);
+      const result2 = await getNextSequenceNumber(accountId2, mockHorizonServer, "TESTNET");
       expect(result2).toBe(102n);
     });
   });
@@ -199,7 +326,7 @@ describe("sequenceManager", () => {
 
       const fn = vi.fn().mockResolvedValue("success");
 
-      const result = await withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      const result = await withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET");
 
       expect(result).toBe("success");
       expect(fn).toHaveBeenCalledTimes(1);
@@ -225,7 +352,7 @@ describe("sequenceManager", () => {
       fn.mockRejectedValueOnce(badSeqError);
       fn.mockResolvedValueOnce("success");
 
-      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET");
       await vi.runAllTimersAsync();
       const result = await promise;
 
@@ -260,7 +387,7 @@ describe("sequenceManager", () => {
         return "success";
       });
 
-      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET");
       await vi.runAllTimersAsync();
       await promise;
 
@@ -277,7 +404,7 @@ describe("sequenceManager", () => {
       const fn = vi.fn().mockRejectedValue(nonSeqError);
 
       await expect(
-        withSequenceRetry(testAccountId, fn, mockHorizonServer)
+        withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET")
       ).rejects.toThrow("Transaction failed: insufficient balance");
 
       expect(fn).toHaveBeenCalledTimes(1);
@@ -301,7 +428,7 @@ describe("sequenceManager", () => {
 
       const fn = vi.fn().mockRejectedValue(badSeqError);
 
-      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer, 2);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET", 2);
       const expectation = expect(promise).rejects.toEqual(badSeqError);
       await vi.runAllTimersAsync();
       await expectation;
@@ -321,7 +448,7 @@ describe("sequenceManager", () => {
         return "success";
       });
 
-      await withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      await withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET");
 
       expect(capturedSequence).toBe(101n);
     });
@@ -346,7 +473,7 @@ describe("sequenceManager", () => {
       fn.mockRejectedValueOnce(badSeqError);
       fn.mockResolvedValueOnce("success");
 
-      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer);
+      const promise = withSequenceRetry(testAccountId, fn, mockHorizonServer, "TESTNET");
 
       // Advance time to trigger retry
       await vi.advanceTimersToNextTimerAsync();
@@ -366,8 +493,8 @@ describe("sequenceManager", () => {
       const accountId2 = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBTUMXBQ";
 
       // Fetch both accounts
-      await getNextSequenceNumber(accountId1, mockHorizonServer);
-      await getNextSequenceNumber(accountId2, mockHorizonServer);
+      await getNextSequenceNumber(accountId1, mockHorizonServer, "TESTNET");
+      await getNextSequenceNumber(accountId2, mockHorizonServer, "TESTNET");
 
       // Clear all cache
       clearAllSequenceCache();
@@ -378,8 +505,8 @@ describe("sequenceManager", () => {
       });
 
       // Both should refetch
-      const result1 = await getNextSequenceNumber(accountId1, mockHorizonServer);
-      const result2 = await getNextSequenceNumber(accountId2, mockHorizonServer);
+      const result1 = await getNextSequenceNumber(accountId1, mockHorizonServer, "TESTNET");
+      const result2 = await getNextSequenceNumber(accountId2, mockHorizonServer, "TESTNET");
 
       expect(result1).toBe(201n);
       expect(result2).toBe(201n);

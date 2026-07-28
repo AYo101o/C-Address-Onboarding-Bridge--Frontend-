@@ -15,8 +15,16 @@ import {
   Account,
   StrKey,
 } from "@stellar/stellar-sdk";
-import { BRIDGE_CONTRACT_ID, HORIZON_URL, SOROBAN_RPC_URL, type StellarNetwork, type BridgeTransactionData } from "./types";
+import {
+  BRIDGE_CONTRACT_ID,
+  HORIZON_URL,
+  SOROBAN_RPC_URL,
+  type StellarNetwork,
+  type WalletNetworkState,
+} from "./types";
 import { withSequenceRetry } from "./sequenceManager";
+
+export type { AppNetwork, WalletNetworkState } from "./types";
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
   const { Horizon } = await import("@stellar/stellar-sdk");
@@ -71,13 +79,70 @@ export async function getWalletAddress(): Promise<string | null> {
   }
 }
 
-export async function getCurrentNetwork(): Promise<StellarNetwork> {
+export interface WalletNetworkInfo {
+  /** What the app can do with the wallet's current network. */
+  status: WalletNetworkState;
+  /**
+   * The raw, upper-cased network name Freighter reported (e.g. "FUTURENET",
+   * "STANDALONE"). Null when the network could not be read at all. Used to name
+   * the actual network in the "unsupported network" notice.
+   */
+  name: string | null;
+}
+
+/**
+ * Reads the wallet's current network *without* collapsing it into the app's
+ * two-value union.
+ *
+ * Freighter can report FUTURENET, STANDALONE or any custom network, and the
+ * query itself can fail. Previously all of those became "TESTNET", so a
+ * Futurenet user saw a confident "Testnet" label, had balances read off the
+ * wrong chain, and got transactions built with the testnet passphrase — with
+ * every resulting error pointing away from the real cause. (#289)
+ */
+export async function getWalletNetwork(): Promise<WalletNetworkInfo> {
   try {
     const result = await getNetwork();
-    const networkName = String(result.network ?? "").toUpperCase();
-    return networkName === "PUBLIC" ? "PUBLIC" : "TESTNET";
+    // Freighter reports failures in-band via `error` as well as by throwing.
+    if (result && typeof result === "object" && "error" in result && result.error) {
+      return { status: "UNKNOWN", name: null };
+    }
+    const name = String(result.network ?? "").toUpperCase();
+    if (name === "PUBLIC" || name === "TESTNET") {
+      return { status: name, name };
+    }
+    return { status: "UNSUPPORTED", name: name || null };
   } catch {
-    return "TESTNET";
+    // Couldn't query the wallet — do NOT pretend it's testnet.
+    return { status: "UNKNOWN", name: null };
+  }
+}
+
+/**
+ * The wallet's current network state, including the "unsupported network" and
+ * "couldn't read the network" cases. Callers must handle all four values;
+ * see {@link WalletNetworkState}. (#289)
+ */
+export async function getCurrentNetwork(): Promise<WalletNetworkState> {
+  return (await getWalletNetwork()).status;
+}
+
+/**
+ * Human-readable label for a wallet network state, for badges and notices.
+ */
+export function formatNetworkLabel(
+  status: WalletNetworkState,
+  name?: string | null
+): string {
+  switch (status) {
+    case "PUBLIC":
+      return "Mainnet";
+    case "TESTNET":
+      return "Testnet";
+    case "UNSUPPORTED":
+      return name ? `${name.charAt(0)}${name.slice(1).toLowerCase()}` : "Unsupported";
+    case "UNKNOWN":
+      return "Unknown";
   }
 }
 
@@ -368,8 +433,43 @@ async function buildSignAndSubmit(
         successful: submitResult.successful,
       };
     },
-    server
+    server,
+    network
   );
+}
+
+/** Shortens an address for display in error messages: GABCDEFG…WXYZ. */
+function truncateAddress(address: string): string {
+  return address.length > 12
+    ? `${address.slice(0, 8)}…${address.slice(-4)}`
+    : address;
+}
+
+/**
+ * Verifies that Freighter's active account is the account that will source the
+ * transaction, *before* anything is built or signed.
+ *
+ * Freighter signs with whichever account is active, not with the account named
+ * as the transaction source. A transaction sourced from address A carrying only
+ * B's signature fails at submission with tx_bad_auth — an opaque error that
+ * says nothing about the actual mismatch. Failing here instead names both
+ * addresses and tells the user what to do. (#287)
+ */
+export async function assertActiveAccountMatches(sourceAddress: string): Promise<void> {
+  const active = await getWalletAddress();
+
+  if (!active) {
+    throw new Error(
+      "Couldn't read Freighter's active account. Connect (or unlock) Freighter and try again."
+    );
+  }
+
+  if (active !== sourceAddress) {
+    throw new Error(
+      `Freighter's active account (${truncateAddress(active)}) doesn't match the From address (${truncateAddress(sourceAddress)}). ` +
+        "Switch accounts in Freighter or use the connected address."
+    );
+  }
 }
 
 /**
@@ -406,6 +506,10 @@ export async function buildAndSubmitPayment(
   network: StellarNetwork,
   onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
+  // Defence in depth: the UI binds the From field to the connected wallet, but
+  // a mismatch here would only surface as tx_bad_auth after signing. (#287)
+  await assertActiveAccountMatches(sourceAddress);
+
   const server = await getHorizonServer(network);
   const passphrase = await getNetworkPassphrase(network);
   const asset = await resolveAsset(server, sourceAddress, assetCode);

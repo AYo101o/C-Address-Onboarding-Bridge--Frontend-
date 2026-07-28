@@ -12,9 +12,10 @@
 import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, Menu, X, AlertTriangle } from "lucide-react";
+import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, Menu, X, AlertTriangle, LogOut } from "lucide-react";
 import { useWallet } from "./wallet-provider";
 import { PrefetchLink } from "./prefetch-link";
+import { formatNetworkLabel } from "@/lib/stellar";
 
 const navLinks = [
   { href: "/bridge", label: "Bridge", icon: ArrowLeftRight },
@@ -25,7 +26,19 @@ const navLinks = [
 
 const Navbar = () => {
   const pathname = usePathname();
-  const { isConnected, address, network, connect, isConnecting, networkMismatch, dismissNetworkMismatch } = useWallet();
+  const {
+    isConnected,
+    address,
+    network,
+    networkStatus,
+    walletNetworkName,
+    isNetworkSupported,
+    connect,
+    disconnect,
+    isConnecting,
+    networkMismatch,
+    dismissNetworkMismatch,
+  } = useWallet();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
@@ -39,6 +52,11 @@ const Navbar = () => {
     connect();
     setMobileOpen(false);
   }, [connect]);
+  const handleDisconnect = useCallback(() => disconnect(), [disconnect]);
+  const handleMobileDisconnect = useCallback(() => {
+    disconnect();
+    setMobileOpen(false);
+  }, [disconnect]);
 
   // Keyboard navigation: Handle Escape key to close mobile menu
   useEffect(() => {
@@ -72,6 +90,27 @@ const Navbar = () => {
   }, [mobileOpen]);
 
   const addressDisplay = useMemo(() => (address ? `${address.slice(0, 4)}...${address.slice(-4)}` : null), [address]);
+
+  // The badge reports what the wallet is actually on, including networks the
+  // app can't use. Rendering an unsupported network as "Testnet" is what made
+  // #289 invisible to users. (#289)
+  const networkBadge = useMemo(() => {
+    const label = formatNetworkLabel(networkStatus, walletNetworkName);
+    if (networkStatus === "PUBLIC") {
+      return { label, className: "bg-[var(--success)]/15 text-[var(--success)]", title: "Connected to Mainnet" };
+    }
+    if (networkStatus === "TESTNET") {
+      return { label, className: "bg-yellow-500/15 text-yellow-400", title: "Connected to Testnet" };
+    }
+    return {
+      label,
+      className: "bg-[var(--error)]/15 text-[var(--error)]",
+      title:
+        networkStatus === "UNSUPPORTED"
+          ? `Freighter is on ${label}, which this app does not support`
+          : "Freighter's network could not be read",
+    };
+  }, [networkStatus, walletNetworkName]);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-xl">
@@ -111,15 +150,19 @@ const Navbar = () => {
                 <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                 <span className="text-xs font-mono text-[var(--text-muted)]">{addressDisplay}</span>
                 <span
-                  className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${
-                    network === "PUBLIC"
-                      ? "bg-[var(--success)]/15 text-[var(--success)]"
-                      : "bg-yellow-500/15 text-yellow-400"
-                  }`}
-                  title={`Connected to ${network === "PUBLIC" ? "Mainnet" : "Testnet"}`}
+                  className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${networkBadge.className}`}
+                  title={networkBadge.title}
                 >
-                  {network === "PUBLIC" ? "Mainnet" : "Testnet"}
+                  {networkBadge.label}
                 </span>
+                <button
+                  onClick={handleDisconnect}
+                  aria-label="Disconnect wallet"
+                  title="Disconnect wallet"
+                  className="ml-1 p-1 rounded text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
               </div>
             ) : (
               <button
@@ -145,6 +188,34 @@ const Navbar = () => {
           </div>
         </div>
       </div>
+
+      {isConnected && !isNetworkSupported && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="border-t border-[var(--error)]/30 bg-[var(--error)]/10 px-4 py-2"
+        >
+          <div className="max-w-7xl mx-auto flex items-center gap-2 text-[var(--error)] text-sm">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              {networkStatus === "UNSUPPORTED" ? (
+                <>
+                  <strong>Unsupported network</strong> — Freighter is on{" "}
+                  <span className="font-mono font-semibold">
+                    {formatNetworkLabel(networkStatus, walletNetworkName)}
+                  </span>
+                  . Switch to Testnet or Mainnet to use the bridge.
+                </>
+              ) : (
+                <>
+                  <strong>Network unavailable</strong> — Freighter&apos;s network couldn&apos;t be
+                  read. Unlock the extension and reload before bridging.
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+      )}
 
       {networkMismatch && (
         <div
@@ -202,7 +273,27 @@ const Navbar = () => {
                 </PrefetchLink>
               );
             })}
-            {!isConnected && (
+            {isConnected ? (
+              <div className="pt-2 mt-2 border-t border-[var(--border)] space-y-2">
+                <div className="flex items-center gap-2 px-3">
+                  <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
+                  <span className="text-xs font-mono text-[var(--text-muted)]">{addressDisplay}</span>
+                  <span
+                    className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${networkBadge.className}`}
+                    title={networkBadge.title}
+                  >
+                    {networkBadge.label}
+                  </span>
+                </div>
+                <button
+                  onClick={handleMobileDisconnect}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--border)] text-sm font-medium text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Disconnect Wallet
+                </button>
+              </div>
+            ) : (
               <button
                 onClick={handleMobileConnect}
                 disabled={isConnecting}
