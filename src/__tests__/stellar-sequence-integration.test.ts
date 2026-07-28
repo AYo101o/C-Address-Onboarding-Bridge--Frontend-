@@ -33,13 +33,13 @@ describe("Sequence number consumption end-to-end", () => {
         sequenceNumber: () => networkSequence,
         balances: [{ asset_type: "native", balance: "1000" }],
       })),
-      submitTransaction: vi.fn().mockImplementation(async (tx: any) => {
+      submitTransaction: vi.fn().mockImplementation(async (tx: { sequence: string | number }) => {
         submittedSequences.push(String(tx.sequence));
         return { hash: "mock-tx-hash" };
       }),
     };
 
-    vi.spyOn(stellarLib, "getHorizonServer").mockResolvedValue(mockHorizonServer as any);
+    vi.spyOn(stellarLib, "getHorizonServer").mockResolvedValue(mockHorizonServer as unknown as Awaited<ReturnType<typeof stellarLib.getHorizonServer>>);
   });
 
   afterEach(() => {

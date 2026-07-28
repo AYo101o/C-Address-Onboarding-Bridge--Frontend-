@@ -220,7 +220,7 @@ export default function BridgePage() {
                   </div>
                   {!validAmount && amount && (
                     <p className="text-xs text-[var(--error)] mt-1">
-                      Invalid amount. Enter a positive number with up to 7 decimal places (e.g. "10" or "0.5").
+                      Invalid amount. Enter a positive number with up to 7 decimal places (e.g. &quot;10&quot; or &quot;0.5&quot;).
                     </p>
                   )}
                   {insufficientBalance && (
