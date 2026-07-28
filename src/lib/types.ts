@@ -7,7 +7,7 @@ export interface WalletState {
   isConnected: boolean;
 }
 
-export interface BridgeTransaction {
+export interface BridgeTransactionData {
   id: string;
   fromAddress: string;
   toAddress: string;
@@ -17,6 +17,7 @@ export interface BridgeTransaction {
   timestamp: number;
   type: "g-to-c" | "fiat" | "cex";
   hash?: string;
+  memo?: string;
 }
 
 export interface Balance {

@@ -15,7 +15,7 @@ import {
   Account,
   StrKey,
 } from "@stellar/stellar-sdk";
-import { BRIDGE_CONTRACT_ID, HORIZON_URL, SOROBAN_RPC_URL, type StellarNetwork } from "./types";
+import { BRIDGE_CONTRACT_ID, HORIZON_URL, SOROBAN_RPC_URL, type StellarNetwork, type BridgeTransactionData } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
@@ -114,19 +114,6 @@ export interface AccountBalances {
   balances: { asset: string; amount: string }[];
   /** True when the account does not exist on-chain (unfunded). (#293) */
   unfunded?: boolean;
-}
-
-export interface BridgeTransactionData {
-  id: string;
-  fromAddress: string;
-  toAddress: string;
-  amount: string;
-  asset: string;
-  status: "pending" | "confirmed" | "failed";
-  timestamp: number;
-  type: "g-to-c" | "fiat" | "cex";
-  hash?: string;
-  memo?: string;
 }
 
 interface HorizonBalance {
