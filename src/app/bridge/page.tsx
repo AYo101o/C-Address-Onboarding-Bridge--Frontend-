@@ -151,6 +151,25 @@ export default function BridgePage() {
     setTxError(null);
   };
 
+  // Announcements for screen readers, derived from the existing status state.
+  // The visible UI copy is unchanged; these strings follow exactly the wording
+  // requested in #224 and the same sense as the visible button/screen copy.
+  // Two permanently-mounted regions avoid the "some AT cache the politeness
+  // value on first registration" pitfall — whichever isn't active is simply
+  // left as the empty string so only one ever has content.
+  const isTxError = txStatus === "error";
+  const politeAnnouncement =
+    txStatus === "signing"
+      ? "Signing transaction."
+      : txStatus === "submitting"
+        ? "Submitting transaction."
+        : txStatus === "success"
+          ? "Transaction submitted successfully."
+          : "";
+  const assertiveAnnouncement = isTxError
+    ? `Transaction failed. ${txError ?? "An unexpected error occurred."}`
+    : "";
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="mb-8">
@@ -163,6 +182,12 @@ export default function BridgePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
+            <div aria-live="polite" aria-atomic="true" className="sr-only">
+              {politeAnnouncement}
+            </div>
+            <div aria-live="assertive" aria-atomic="true" className="sr-only">
+              {assertiveAnnouncement}
+            </div>
             {step === "form" && (
               <div className="space-y-6">
                 {isConnected && !isNetworkSupported && (
