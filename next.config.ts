@@ -12,10 +12,70 @@ const initialJsBudgetBytes = Number(process.env.NEXT_PUBLIC_INITIAL_JS_BUDGET_KB
 // so that bundle-size budget violations fail the build.
 const enforceBudget = process.env.ENFORCE_BUDGET === "true";
 
+const isDev = process.env.NODE_ENV === "development";
+// Start in Report-Only mode for issue #239 initial rollout; after confirming no
+// legitimate traffic triggers violations, flip to enforcing ("Content-Security-Policy").
+const CSP_HEADER_NAME = "Content-Security-Policy-Report-Only";
+
+// NOTE on 'unsafe-inline' in script-src / style-src: this weakens XSS protection
+// and is a deliberate tradeoff. Next.js App Router injects inline bootstrap
+// scripts for hydration and Tailwind 4 injects inline styles; removing
+// 'unsafe-inline' would require a nonce-based CSP via proxy.ts with per-request
+// nonce generation + forced dynamic rendering on all pages + connection() calls,
+// which is a larger refactor (track as a follow-up).
+const cspHeader = `
+  default-src 'self';
+  script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""};
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data:;
+  font-src 'self';
+  connect-src 'self'
+    https://horizon.stellar.org
+    https://horizon-testnet.stellar.org
+    https://soroban-testnet.stellar.org;
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  object-src 'none';
+  upgrade-insecure-requests;
+`;
+
+// IMPORTANT: if you set NEXT_PUBLIC_SOROBAN_RPC_URL_PUBLIC to a custom mainnet
+// Soroban RPC endpoint (e.g. your own hosted RPC, a commercial provider), you
+// MUST also add that exact origin to the connect-src directive above, or RPC
+// calls to it will be blocked by the CSP when flipping to enforcing mode.
+
+const securityHeaders = [
+  {
+    key: CSP_HEADER_NAME,
+    value: cspHeader.replace(/\s{2,}/g, " ").trim(),
+  },
+  {
+    key: "X-Frame-Options",
+    value: "DENY",
+  },
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=()",
+  },
+];
+
 const nextConfig: NextConfig = {
   turbopack: {},
   experimental: {
     optimizePackageImports: ["lucide-react"],
+  },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
+    ];
   },
   webpack(config, { isServer }) {
     if (!isServer) {
