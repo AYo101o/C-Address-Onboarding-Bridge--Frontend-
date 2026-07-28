@@ -33,7 +33,10 @@ const steps = [
   {
     step: "01",
     title: "Connect Wallet",
-    description: "Connect your Freighter wallet or enter any Stellar address.",
+    // The connected Freighter account is the only possible source: Freighter
+    // signs with its active account, so any other "from" address could only
+    // fail at submission with tx_bad_auth. (#287)
+    description: "Connect your Freighter wallet — the connected account funds the transfer.",
   },
   {
     step: "02",

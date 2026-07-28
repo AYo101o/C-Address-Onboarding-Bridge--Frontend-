@@ -51,7 +51,11 @@ describe("asset resolution honors the requested assetCode (#285)", () => {
 
     vi.mocked(freighter.signTransaction).mockImplementation(async (xdr: string) => ({
       signedTxXdr: xdr,
+      signerAddress: G_SOURCE,
     }));
+    // The source must be Freighter's active account or the payment is refused
+    // before it is ever built. (#287)
+    vi.mocked(freighter.getAddress).mockResolvedValue({ address: G_SOURCE } as never);
 
     loadAccountMock.mockResolvedValue({
       sequenceNumber: () => "100",
@@ -98,6 +102,59 @@ describe("asset resolution honors the requested assetCode (#285)", () => {
     await expect(
       buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "SHITCOIN", "TESTNET")
     ).rejects.toThrow(/trustline/i);
+  });
+});
+
+// Regression coverage for #287: Freighter signs with its active account, so a
+// transaction sourced from any other address can only fail at submission with
+// tx_bad_auth. The signing prompt must be unreachable in that case.
+describe("source address must be Freighter's active account (#287)", () => {
+  const OTHER_ACCOUNT = Keypair.random().publicKey();
+
+  beforeEach(() => {
+    // The freighter mocks are module-level, so call history survives across
+    // describe blocks unless it is cleared explicitly.
+    vi.clearAllMocks();
+    vi.mocked(freighter.signTransaction).mockImplementation(async (xdr: string) => ({
+      signedTxXdr: xdr,
+      signerAddress: G_SOURCE,
+    }));
+    vi.mocked(freighter.getAddress).mockResolvedValue({ address: OTHER_ACCOUNT } as never);
+    loadAccountMock.mockResolvedValue({
+      sequenceNumber: () => "100",
+      balances: [{ asset_type: "native", balance: "1000" }],
+    });
+    submitTransactionMock.mockResolvedValue({ hash: "mock-hash", successful: true });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    loadAccountMock.mockReset();
+    submitTransactionMock.mockReset();
+  });
+
+  it("rejects with an actionable message naming both accounts", async () => {
+    await expect(
+      buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET")
+    ).rejects.toThrow(/doesn't match the From address/);
+  });
+
+  it("never reaches Freighter's signing prompt", async () => {
+    await expect(
+      buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET")
+    ).rejects.toThrow();
+
+    expect(freighter.signTransaction).not.toHaveBeenCalled();
+    expect(submitTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it("allows the payment once the active account matches", async () => {
+    vi.mocked(freighter.getAddress).mockResolvedValue({ address: G_SOURCE } as never);
+
+    const result = await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
+
+    expect(result.hash).toBe("mock-hash");
+    expect(freighter.signTransaction).toHaveBeenCalled();
   });
 });
 
