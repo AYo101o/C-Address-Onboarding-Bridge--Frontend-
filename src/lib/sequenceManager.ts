@@ -1,10 +1,11 @@
 import { Horizon, rpc, Account } from "@stellar/stellar-sdk";
+import type { StellarNetwork } from "./types";
 
 /**
  * Manages Stellar account sequence numbers to prevent bad_seq errors.
  *
  * Strategy:
- * - Cache the sequence number per account after each fetch
+ * - Cache the sequence number per (network, account) after each fetch
  * - Increment locally for consecutive transactions without re-fetching
  * - Invalidate cache and re-fetch on bad_seq errors
  * - Re-fetch if cache is older than CACHE_TTL_MS
@@ -23,18 +24,32 @@ interface SequenceEntry {
 const cache = new Map<string, SequenceEntry>();
 
 /**
- * Returns the next sequence number for the given account address.
- * Fetches from network if cache is missing or expired.
+ * The same G-address exists independently on testnet and mainnet with entirely
+ * unrelated sequence numbers, so the network has to be part of the cache key.
+ * Keying on the address alone meant switching Freighter between networks within
+ * the 30s TTL served (and incremented) the *other* chain's sequence, producing
+ * intermittent tx_bad_seq failures. (#290)
+ */
+function cacheKey(accountId: string, network: StellarNetwork): string {
+  return `${network}:${accountId}`;
+}
+
+/**
+ * Returns the next sequence number for the given account address on the given
+ * network. Fetches from network if cache is missing or expired.
  * Increments the cached value for subsequent calls within TTL.
  *
  * @param accountId - Stellar public key (G... address)
  * @param server - Horizon or SorobanRpc server instance
+ * @param network - The network `server` points at ("PUBLIC" or "TESTNET")
  */
 export async function getNextSequenceNumber(
   accountId: string,
-  server: Horizon.Server | rpc.Server
+  server: Horizon.Server | rpc.Server,
+  network: StellarNetwork
 ): Promise<bigint> {
-  const entry = cache.get(accountId);
+  const key = cacheKey(accountId, network);
+  const entry = cache.get(key);
   const now = Date.now();
 
   if (entry && now - entry.fetchedAt < CACHE_TTL_MS) {
@@ -46,7 +61,7 @@ export async function getNextSequenceNumber(
   // Cache miss or expired — fetch from network
   const currentSequence = await fetchSequenceFromNetwork(accountId, server);
   const nextSequence = currentSequence + 1n;
-  cache.set(accountId, { sequence: nextSequence, fetchedAt: now });
+  cache.set(key, { sequence: nextSequence, fetchedAt: now });
   return nextSequence;
 }
 
@@ -68,13 +83,20 @@ async function fetchSequenceFromNetwork(
 }
 
 /**
- * Invalidates the cached sequence number for an account.
+ * Invalidates the cached sequence number for an account on a single network.
  * Call this when a bad_seq error is received so the next call re-fetches.
  *
+ * Only the (network, account) pair is dropped — the same address's entry on the
+ * other network is untouched, since the two sequences are unrelated. (#290)
+ *
  * @param accountId - Stellar public key to invalidate
+ * @param network - The network whose entry should be dropped
  */
-export function invalidateSequenceCache(accountId: string): void {
-  cache.delete(accountId);
+export function invalidateSequenceCache(
+  accountId: string,
+  network: StellarNetwork
+): void {
+  cache.delete(cacheKey(accountId, network));
 }
 
 /**
@@ -117,24 +139,26 @@ export function isBadSequenceError(error: unknown): boolean {
  * @param fn - Async function that builds and submits a transaction.
  *             Receives a getSequence function it should call to get the sequence.
  * @param server - Stellar server instance for re-fetching
+ * @param network - The network `server` points at ("PUBLIC" or "TESTNET")
  * @param maxRetries - Maximum number of retries on bad_seq (default: 1)
  */
 export async function withSequenceRetry<T>(
   accountId: string,
   fn: (getSequence: () => Promise<bigint>) => Promise<T>,
   server: Horizon.Server | rpc.Server,
+  network: StellarNetwork,
   maxRetries = 1
 ): Promise<T> {
   let attempts = 0;
 
   while (true) {
     try {
-      const getSequence = () => getNextSequenceNumber(accountId, server);
+      const getSequence = () => getNextSequenceNumber(accountId, server, network);
       return await fn(getSequence);
     } catch (error) {
       if (isBadSequenceError(error) && attempts < maxRetries) {
         attempts++;
-        invalidateSequenceCache(accountId);
+        invalidateSequenceCache(accountId, network);
         // Small delay before retry to avoid thundering herd
         await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempts));
         continue;

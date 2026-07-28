@@ -5,8 +5,8 @@ import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLin
 import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
 import Link from "next/link";
-import { getAccountBalances, fetchRecentTransactions, getExplorerUrl } from "@/lib/stellar";
-import type { BridgeTransactionData } from "@/lib/types";
+import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel } from "@/lib/stellar";
+import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 /** How often the dashboard polls for updated balances and transactions. */
@@ -27,7 +27,7 @@ function areTransactionsEqual(a: BridgeTransactionData[], b: BridgeTransactionDa
 }
 
 export default function DashboardPage() {
-  const { isConnected, address, network, connect } = useWallet();
+  const { isConnected, address, network, networkStatus, walletNetworkName, isNetworkSupported, connect } = useWallet();
   const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
   const [balance, setBalance] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<BridgeTransactionData[]>([]);
@@ -36,6 +36,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isConnected || !address) return;
+    // Don't read balances off a guessed chain: on an unsupported/unreadable
+    // network the app can't tell which Horizon is the right one, and the old
+    // testnet fallback showed an unrelated (or empty) account state. The
+    // fetched values are hidden from the UI below rather than cleared here, so
+    // the previous network's data can't be mistaken for the current one. (#289)
+    if (!isNetworkSupported) return;
     // Ignore results from any fetch that was in flight when this effect
     // re-ran (e.g. a rapid network switch). Without this, a slow response
     // for the previous network could overwrite fresh data for the current one.
@@ -69,10 +75,15 @@ export default function DashboardPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isConnected, address, network]);
+  }, [isConnected, address, network, isNetworkSupported]);
 
-  const confirmedCount = transactions.filter((t) => t.status === "confirmed").length;
-  const pendingCount = transactions.filter((t) => t.status === "pending").length;
+  // Chain data is only shown for a network the app actually queried. (#289)
+  const shownTransactions = isNetworkSupported ? transactions : [];
+  const shownBalance = isNetworkSupported ? balance : null;
+  const showLoading = loading && isNetworkSupported;
+
+  const confirmedCount = shownTransactions.filter((t) => t.status === "confirmed").length;
+  const pendingCount = shownTransactions.filter((t) => t.status === "pending").length;
 
   const handleCopy = () => {
     if (!address) return;
@@ -146,8 +157,10 @@ export default function DashboardPage() {
             )}
           </div>
           <div className="text-xs text-[var(--text-muted)] mt-1">
-            {network === "PUBLIC" ? "Mainnet" : "Testnet"}
-            {address && (
+            <span className={isNetworkSupported ? undefined : "text-[var(--error)] font-medium"}>
+              {formatNetworkLabel(networkStatus, walletNetworkName)}
+            </span>
+            {address && isNetworkSupported && (
               <a
                 href={getExplorerUrl(network, "account", address)}
                 target="_blank"
@@ -163,7 +176,7 @@ export default function DashboardPage() {
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="text-xs text-[var(--text-muted)] mb-1">XLM Balance</div>
-          {loading ? (
+          {showLoading ? (
             <div className="flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
               <span className="text-xs text-[var(--text-muted)]">Loading...</span>
@@ -171,7 +184,7 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="text-2xl font-bold mb-1">
-                {balance !== null ? parseFloat(balance).toFixed(2) : "—"}
+                {shownBalance !== null ? parseFloat(shownBalance).toFixed(2) : "—"}
               </div>
               <div className="text-xs text-[var(--text-muted)]">XLM</div>
             </>
@@ -180,14 +193,14 @@ export default function DashboardPage() {
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="text-xs text-[var(--text-muted)] mb-1">Transactions</div>
-          {loading ? (
+          {showLoading ? (
             <div className="flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
               <span className="text-xs text-[var(--text-muted)]">Loading...</span>
             </div>
           ) : (
             <>
-              <div className="text-2xl font-bold mb-1">{transactions.length}</div>
+              <div className="text-2xl font-bold mb-1">{shownTransactions.length}</div>
               <div className="text-xs text-[var(--text-muted)]">
                 {confirmedCount} confirmed{pendingCount > 0 ? `, ${pendingCount} pending` : ""}
               </div>
@@ -237,13 +250,24 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {!isNetworkSupported && (
+        <div
+          role="alert"
+          className="mb-6 p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 text-sm text-[var(--error)]"
+        >
+          {networkStatus === "UNSUPPORTED"
+            ? `Freighter is on ${formatNetworkLabel(networkStatus, walletNetworkName)}, which this app doesn't support. Switch to Testnet or Mainnet to see balances and activity.`
+            : "Freighter's network couldn't be read, so no chain data is shown. Unlock the extension and reload."}
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 text-sm text-[var(--error)]">
           {error}
         </div>
       )}
 
-      <TransactionHistory transactions={transactions} loading={loading} network={network} address={address ?? undefined} />
+      <TransactionHistory transactions={shownTransactions} loading={showLoading} network={network} address={address ?? undefined} />
     </div>
   );
 }
