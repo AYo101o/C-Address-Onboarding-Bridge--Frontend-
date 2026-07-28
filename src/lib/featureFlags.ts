@@ -62,11 +62,8 @@ export function isFeatureEnabled(
   if (flag.rolloutPercentage === 100) return true;
   if (flag.rolloutPercentage === 0) return flag.defaultEnabled;
 
-  const hash = deterministicHash(`${key}:${sessionId ?? getSessionId()}`);
-  const isEnabledByRollout = (hash % 100) < flag.rolloutPercentage;
-
-  // 4. Return rollout result if it applies, otherwise default
-  return isEnabledByRollout || flag.defaultEnabled;
+const hash = deterministicHash(`${key}:${sessionId ?? getSessionId()}`);
+return (hash % 100) < flag.rolloutPercentage;
 }
 
 /**

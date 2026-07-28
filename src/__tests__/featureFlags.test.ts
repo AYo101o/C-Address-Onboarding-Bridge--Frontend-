@@ -180,7 +180,95 @@ describe('featureFlags', () => {
     });
   });
 
-  describe('environment variable parsing', () => {
+  it('ignores defaultEnabled when rolloutPercentage is set', () => {
+  vi.stubEnv('NODE_ENV', 'production');
+  FEATURE_FLAGS.push({
+    key: 'test_rollout_override',
+    name: 'Test Rollout Override',
+    description: 'Tests that rolloutPercentage overrides defaultEnabled',
+    defaultEnabled: true,
+    rolloutPercentage: 50,
+  });
+  const results = new Set<boolean>();
+  for (let i = 0; i < 200; i++) {
+    results.add(isFeatureEnabled('test_rollout_override', `session-${i}`));
+  }
+  expect(results.size).toBeGreaterThanOrEqual(2);
+  FEATURE_FLAGS.pop();
+});
+
+describe('rollout percentage x defaultEnabled matrix', () => {
+  function findSessions(rolloutPercent: number): { inside: string; outside: string } {
+    FEATURE_FLAGS.push({
+      key: 'matrix_test_flag',
+      name: 'Matrix Test Flag',
+      description: 'Temporary test flag',
+      defaultEnabled: false,
+      rolloutPercentage: rolloutPercent,
+    });
+    let inside = '';
+    let outside = '';
+    for (let i = 0; i < 10000 && (!inside || !outside); i++) {
+      const sid = `matrix-session-${i}`;
+      const result = isFeatureEnabled('matrix_test_flag', sid);
+      if (result && !inside) inside = sid;
+      if (!result && !outside) outside = sid;
+    }
+    FEATURE_FLAGS.pop();
+    return { inside, outside };
+  }
+
+  it('rollout 0 returns defaultEnabled regardless of session', () => {
+    for (const defaultEnabled of [true, false]) {
+      FEATURE_FLAGS.push({
+        key: 'matrix_test_flag',
+        name: 'Matrix Test Flag',
+        description: 'Temporary test flag',
+        defaultEnabled,
+        rolloutPercentage: 0,
+      });
+      expect(isFeatureEnabled('matrix_test_flag', 'any-session')).toBe(defaultEnabled);
+      expect(isFeatureEnabled('matrix_test_flag', 'another-session')).toBe(defaultEnabled);
+      FEATURE_FLAGS.pop();
+    }
+  });
+
+  it('rollout 100 returns true regardless of defaultEnabled', () => {
+    for (const defaultEnabled of [true, false]) {
+      FEATURE_FLAGS.push({
+        key: 'matrix_test_flag',
+        name: 'Matrix Test Flag',
+        description: 'Temporary test flag',
+        defaultEnabled,
+        rolloutPercentage: 100,
+      });
+      expect(isFeatureEnabled('matrix_test_flag', 'any-session')).toBe(true);
+      expect(isFeatureEnabled('matrix_test_flag', 'another-session')).toBe(true);
+      FEATURE_FLAGS.pop();
+    }
+  });
+
+  it('intermediate rollout respects hash bucket regardless of defaultEnabled', () => {
+    for (const defaultEnabled of [true, false]) {
+      const { inside, outside } = findSessions(10);
+      expect(inside).not.toBe('');
+      expect(outside).not.toBe('');
+
+      FEATURE_FLAGS.push({
+        key: 'matrix_test_flag',
+        name: 'Matrix Test Flag',
+        description: 'Temporary test flag',
+        defaultEnabled,
+        rolloutPercentage: 10,
+      });
+      expect(isFeatureEnabled('matrix_test_flag', inside)).toBe(true);
+      expect(isFeatureEnabled('matrix_test_flag', outside)).toBe(false);
+      FEATURE_FLAGS.pop();
+    }
+  });
+});
+
+describe('environment variable parsing', () => {
     it('parses single flag from env var', () => {
       process.env.NEXT_PUBLIC_FEATURE_FLAGS = 'new_onboarding_flow=true';
       

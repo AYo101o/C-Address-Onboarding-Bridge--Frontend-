@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Keypair } from "@stellar/stellar-sdk";
 import { buildAndSubmitPayment } from "@/lib/stellar";
 import { clearAllSequenceCache } from "@/lib/sequenceManager";
 import * as freighter from "@stellar/freighter-api";
-import * as stellarLib from "@/lib/stellar";
 
-const G_SOURCE = "GAIUIQ7G3TMN53Z2Y3Y5CJI7Q7ZQJX4W5F5N5Z5Q5Z5Q5Z5Q5Z5Q5Z5A";
-const G_DEST = "GBIUIQ7G3TMN53Z2Y3Y5CJI7Q7ZQJX4W5F5N5Z5Q5Z5Q5Z5Q5Z5Q5Z5B";
+const G_SOURCE = Keypair.random().publicKey();
+const G_DEST = Keypair.random().publicKey();
 
 vi.mock("@stellar/freighter-api", () => ({
   signTransaction: vi.fn(),
@@ -14,32 +14,66 @@ vi.mock("@stellar/freighter-api", () => ({
   getNetwork: vi.fn(),
 }));
 
-describe("Sequence number consumption end-to-end", () => {
-  let networkSequence = "100";
-  let submittedSequences: string[] = [];
+/**
+ * Sequence numbers keyed by the Horizon URL the server was constructed with —
+ * i.e. by network. The same G-address holds completely unrelated sequences on
+ * testnet and mainnet, which is the whole point of #290; a single shared
+ * counter here would make that bug untestable.
+ */
+const networkSequence: Record<string, string> = {};
+const loadAccountCalls: string[] = [];
+const submitted: { network: string; sequence: string }[] = [];
 
+function networkOf(url: string): string {
+  return url.includes("horizon-testnet") ? "TESTNET" : "PUBLIC";
+}
+
+// Replace only Horizon.Server's network calls; the rest of the SDK stays real
+// so the transaction is genuinely built, signed and rebuilt from XDR.
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@stellar/stellar-sdk")>();
+  return {
+    ...actual,
+    Horizon: {
+      ...actual.Horizon,
+      Server: vi.fn().mockImplementation(function MockHorizonServer(
+        this: Record<string, unknown>,
+        url: string
+      ) {
+        const network = networkOf(url);
+        this.loadAccount = async () => {
+          loadAccountCalls.push(network);
+          return {
+            sequenceNumber: () => networkSequence[network],
+            balances: [{ asset_type: "native", balance: "1000" }],
+          };
+        };
+        this.fetchBaseFee = async () => 100;
+        this.submitTransaction = async (tx: { sequence: string }) => {
+          submitted.push({ network, sequence: String(tx.sequence) });
+          return { hash: "mock-tx-hash", successful: true };
+        };
+      }),
+    },
+  };
+});
+
+describe("Sequence number consumption end-to-end", () => {
   beforeEach(() => {
     clearAllSequenceCache();
-    networkSequence = "100";
-    submittedSequences = [];
+    networkSequence.TESTNET = "100";
+    networkSequence.PUBLIC = "5000";
+    loadAccountCalls.length = 0;
+    submitted.length = 0;
     vi.useFakeTimers();
 
-    vi.mocked(freighter.signTransaction).mockImplementation(async (xdr: string) => {
-      return { signedTxXdr: xdr };
-    });
-
-    const mockHorizonServer = {
-      loadAccount: vi.fn().mockImplementation(async () => ({
-        sequenceNumber: () => networkSequence,
-        balances: [{ asset_type: "native", balance: "1000" }],
-      })),
-      submitTransaction: vi.fn().mockImplementation(async (tx: { sequence: string | number }) => {
-        submittedSequences.push(String(tx.sequence));
-        return { hash: "mock-tx-hash" };
-      }),
-    };
-
-    vi.spyOn(stellarLib, "getHorizonServer").mockResolvedValue(mockHorizonServer as unknown as Awaited<ReturnType<typeof stellarLib.getHorizonServer>>);
+    vi.mocked(freighter.signTransaction).mockImplementation(async (xdr: string) => ({
+      signedTxXdr: xdr,
+      signerAddress: G_SOURCE,
+    }));
+    // buildAndSubmitPayment refuses to build for anything but Freighter's
+    // active account. (#287)
+    vi.mocked(freighter.getAddress).mockResolvedValue({ address: G_SOURCE } as never);
   });
 
   afterEach(() => {
@@ -47,33 +81,53 @@ describe("Sequence number consumption end-to-end", () => {
     vi.restoreAllMocks();
   });
 
+  // A transaction's sequence is the account's *next* sequence, so an on-chain
+  // sequence of 100 produces a transaction numbered 101.
   it("increments sequence number strictly by 1 across consecutive payment calls", async () => {
-    // 1st call (cache miss -> fetches networkSequence 100)
     const res1 = await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
     expect(res1.successful).toBe(true);
-    expect(submittedSequences[0]).toBe("100");
+    expect(submitted[0].sequence).toBe("101");
 
-    // 2nd call (cache hit -> increments to 101)
+    // 2nd call (cache hit -> increments to 102)
     const res2 = await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
     expect(res2.successful).toBe(true);
-    expect(submittedSequences[1]).toBe("101");
+    expect(submitted[1].sequence).toBe("102");
   });
 
   it("handles cache expiration and fetches fresh sequence without collision", async () => {
-    // 1st call
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
-    expect(submittedSequences[0]).toBe("100");
+    expect(submitted[0].sequence).toBe("101");
 
-    // 2nd call (cache hit)
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
-    expect(submittedSequences[1]).toBe("101");
+    expect(submitted[1].sequence).toBe("102");
 
     // Advance past TTL (30s)
     vi.advanceTimersByTime(35_000);
-    networkSequence = "102"; // Network sequence updated after 2 transactions confirmed
+    networkSequence.TESTNET = "102"; // Network sequence updated after 2 transactions confirmed
 
-    // 3rd call (cache miss -> fetches networkSequence 102)
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
-    expect(submittedSequences[2]).toBe("102");
+    expect(submitted[2].sequence).toBe("103");
+  });
+
+  // #290: switching Freighter's network inside the 30s TTL used to build the
+  // second transaction from the *other* chain's cached sequence — a
+  // near-guaranteed tx_bad_seq that only reproduced intermittently.
+  it("does not carry a testnet sequence into a mainnet transaction", async () => {
+    await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
+    expect(submitted[0]).toEqual({ network: "TESTNET", sequence: "101" });
+
+    // User flips Freighter to mainnet, well inside the cache TTL.
+    vi.advanceTimersByTime(5_000);
+    await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "PUBLIC");
+
+    expect(submitted[1]).toEqual({ network: "PUBLIC", sequence: "5001" });
+    // Each network was fetched from its own Horizon, rather than one reusing
+    // the other's cached entry.
+    expect(loadAccountCalls).toContain("TESTNET");
+    expect(loadAccountCalls).toContain("PUBLIC");
+
+    // Switching back continues the testnet series where it left off.
+    await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
+    expect(submitted[2]).toEqual({ network: "TESTNET", sequence: "102" });
   });
 });
