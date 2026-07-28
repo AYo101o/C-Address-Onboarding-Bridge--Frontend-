@@ -51,6 +51,33 @@ export const STELLAR_NETWORK = {
 /** The set of supported Stellar network identifiers. */
 export type StellarNetwork = keyof typeof STELLAR_NETWORK;
 
+/**
+ * The networks this app is able to transact on. Alias of {@link StellarNetwork},
+ * kept as a distinct name because it reads more clearly next to
+ * {@link WalletNetworkState}, where "the app's networks" and "whatever the
+ * wallet happens to be on" are genuinely different sets. (#289)
+ */
+export type AppNetwork = StellarNetwork;
+
+/**
+ * Everything the wallet's network can actually be, from the app's point of view:
+ *
+ * - `"PUBLIC"` / `"TESTNET"` — a network the app supports
+ * - `"UNSUPPORTED"` — the wallet reported a real network the app can't use
+ *   (Futurenet, Standalone, a custom passphrase…)
+ * - `"UNKNOWN"` — the network could not be read from the wallet at all
+ *
+ * The last two must stay distinct from `"TESTNET"`: coercing them silently made
+ * a Futurenet wallet look like a genuine testnet session, so the app queried the
+ * wrong Horizon and built transactions with the wrong passphrase. (#289)
+ */
+export type WalletNetworkState = AppNetwork | "UNSUPPORTED" | "UNKNOWN";
+
+/** Narrows a wallet network state to one the app can build transactions on. */
+export function isSupportedNetwork(state: WalletNetworkState): state is AppNetwork {
+  return state === "PUBLIC" || state === "TESTNET";
+}
+
 // SDF does not operate a free public mainnet Soroban RPC, so PUBLIC must be
 // configured explicitly; getSorobanRpcServer throws a clear error if it's
 // unset rather than resolving to a non-existent hostname. TESTNET defaults to
