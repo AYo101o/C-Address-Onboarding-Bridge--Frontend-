@@ -43,7 +43,34 @@ export function calculateOnrampFeeAndReceive(amount: number, providerId: string)
   return { feeRate, fee, receive };
 }
 
-function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string): string {
+export function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string): string {
+  // Defence-in-depth: re-validate inputs independently of the button's
+  // disabled state / canProceed guard. These checks match the same validation
+  // logic used at the UI layer (isCAddress from @/lib/stellar and the same
+  // fiat-amount regex used for validAmount). If a future refactor removes or
+  // weakens the UI guard, this function will still refuse to build a URL with
+  // an invalid C-address or amount.
+  if (!isCAddress(cAddress)) {
+    throw new Error("Invalid C-address (must start with C, 56 characters, valid checksum).");
+  }
+  if (!/^\d+(\.\d{1,2})?$/.test(fiatAmount)) {
+    throw new Error("Invalid amount format.");
+  }
+
+  // Why URLSearchParams-based construction is safe from injection:
+  //   1. Value encoding: URLSearchParams percent-encodes every param value
+  //      (including &, =, #, ?, %, and all other non-unreserved characters),
+  //      so an attacker-controlled value can never break out of the
+  //      walletAddress= or amount= value slot and inject additional params.
+  //   2. Fixed key set: all param names (apiKey, walletAddress, currencyCode,
+  //      baseCurrencyAmount, baseCurrencyCode, network,
+  //      defaultCryptoCurrency, defaultFiatAmount, fiatCurrency) are string
+  //      literals in this file — user input is never used as a param key.
+  //   3. Fixed base URL: p.baseUrl comes from the `providers` array above —
+  //      hardcoded per-provider host literals — so the scheme + host are not
+  //      attacker-controlled.
+  // Combined with the isCAddress check above (which enforces a base32 alphabet
+  // that excludes &, =, # outright), this provides two layers of defence.
   const params =
     p.id === "moonpay"
       ? new URLSearchParams({
@@ -93,12 +120,21 @@ export default function OnrampPage() {
       return;
     }
 
-    const url = buildProviderUrl(provider, cAddress, fiatAmount);
-    setRedirectUrl(url);
-    setStep("redirect");
-    // Open synchronously within the click handler to preserve user activation
-    // so default popup blockers do not block the new tab.
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const url = buildProviderUrl(provider, cAddress, fiatAmount);
+      setRedirectUrl(url);
+      setStep("redirect");
+      // Open synchronously within the click handler to preserve user activation
+      // so default popup blockers do not block the new tab.
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Failed to build onramp redirect URL:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to prepare provider redirect. Please double-check your input and try again."
+      );
+    }
   };
 
   return (
