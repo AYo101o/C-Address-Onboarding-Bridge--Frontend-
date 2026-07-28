@@ -210,6 +210,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
 
     // Initial check + start fast polling
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updateConnection().finally(() => {
       startBackoff();
       scheduleNext();
