@@ -162,7 +162,7 @@ export default function BridgePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <div className="card p-6">
             {step === "form" && (
               <div className="space-y-6">
                 {isConnected && !isNetworkSupported && (
@@ -438,7 +438,7 @@ export default function BridgePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">About G → C Bridging</h3>
             <ul className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">
@@ -456,7 +456,7 @@ export default function BridgePage() {
             </ul>
           </div>
 
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <div className="card p-5">
             <h3 className="font-semibold mb-3">Quick Info</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
