@@ -6,7 +6,7 @@ import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel } from "@/lib/stellar";
-import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
+import type { BridgeTransactionData } from "@/lib/types";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 /** How often the dashboard polls for updated balances and transactions. */
@@ -70,10 +70,22 @@ export default function DashboardPage() {
       }
     };
     fetchData(true);
-    const interval = setInterval(() => fetchData(false), DASHBOARD_POLL_INTERVAL_MS);
+    // Polling in a hidden/background tab burns network and battery for data
+    // nobody is looking at. Skip the tick while hidden, and catch up
+    // immediately the moment the tab becomes visible again instead of waiting
+    // out the rest of the interval.
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchData(false);
+    }, DASHBOARD_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchData(false);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isConnected, address, network, isNetworkSupported]);
 
