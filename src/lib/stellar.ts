@@ -21,13 +21,16 @@ import {
   SOROBAN_RPC_URL,
   type StellarNetwork,
   type WalletNetworkState,
+  type BridgeTransactionData,
 } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
 
-export type { AppNetwork, WalletNetworkState } from "./types";
+export type { AppNetwork, WalletNetworkState, BridgeTransactionData } from "./types";
+
+/** Seconds a built transaction stays valid before the network rejects it. */
+const TRANSACTION_TIMEOUT_SECONDS = 30;
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
-  const { Horizon } = await import("@stellar/stellar-sdk");
   return new Horizon.Server(HORIZON_URL[network]);
 }
 
@@ -38,12 +41,10 @@ export async function getSorobanRpcServer(network: StellarNetwork): Promise<rpc.
       `No Soroban RPC URL configured for ${network}. Set NEXT_PUBLIC_SOROBAN_RPC_URL_${network} in your environment.`
     );
   }
-  const { rpc } = await import("@stellar/stellar-sdk");
   return new rpc.Server(url);
 }
 
 export async function getNetworkPassphrase(network: StellarNetwork): Promise<string> {
-  const { Networks } = await import("@stellar/stellar-sdk");
   return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
 }
 
@@ -388,8 +389,6 @@ async function buildSignAndSubmit(
   passphrase: string,
   onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
-  const { TransactionBuilder, Operation } = await import("@stellar/stellar-sdk");
-
   // Fetch a dynamic fee bid (2× base fee, capped at 10 000 stroops) so the
   // transaction is not rejected during surge-pricing windows. (#301)
   const fee = await getRecommendedFee(network);
@@ -483,8 +482,6 @@ async function resolveAsset(
   sourceAddress: string,
   assetCode: string
 ): Promise<Asset> {
-  const { Asset } = await import("@stellar/stellar-sdk");
-
   if (assetCode === "XLM") {
     return Asset.native();
   }
@@ -559,7 +556,10 @@ export async function bridgeViaContract(
     );
   }
 
-  return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
+  // Forward onPhase so the caller's "Signing..."/"Submitting..." states still
+  // fire on this path; without it the UI sits on "Signing..." until the
+  // transaction resolves.
+  return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network, onPhase);
 }
 
 export function getExplorerUrl(

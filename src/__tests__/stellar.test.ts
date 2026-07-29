@@ -1,6 +1,33 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
-import { isValidStellarAddress, isCAddress, isGAddress } from "@/lib/stellar";
+import {
+  isValidStellarAddress,
+  isCAddress,
+  isGAddress,
+  isValidStellarAmount,
+  getAccountBalances,
+  clearAccountBalancesCache,
+} from "@/lib/stellar";
+
+// Horizon's network call is the only thing stubbed; every other SDK export
+// (Keypair, StrKey, ...) stays real so the address fixtures below are genuine
+// checksum-valid StrKeys rather than hand-rolled look-alikes.
+const loadAccount = vi.fn();
+
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@stellar/stellar-sdk")>();
+  return {
+    ...actual,
+    Horizon: {
+      ...actual.Horizon,
+      Server: vi.fn().mockImplementation(function MockHorizonServer(this: {
+        loadAccount: typeof loadAccount;
+      }) {
+        this.loadAccount = loadAccount;
+      }),
+    },
+  };
+});
 
 // Real, checksum-valid StrKeys derived from the SDK — not hardcoded strings
 // that merely "look" the right length/prefix. The G-address is a genuine
