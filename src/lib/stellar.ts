@@ -415,6 +415,22 @@ async function buildSignAndSubmit(
         .build();
 
       onPhase?.("signing");
+
+      // #241 — Re-fetch the wallet's current network immediately before
+      // signing.  The user may have switched networks in Freighter during the
+      // time between the app loading and the "Confirm" click.  If the wallet
+      // is no longer on the same network the transaction was built for, abort
+      // here with a clear, actionable message rather than signing a transaction
+      // that will either fail at submission or, worse, succeed on the wrong
+      // chain.
+      const currentNetwork = await getCurrentNetwork();
+      if (currentNetwork !== network) {
+        throw new Error(
+          "Network changed in Freighter — please retry. " +
+          `Transaction was built for ${network} but Freighter is now on ${currentNetwork}.`
+        );
+      }
+
       const signedResult = await signTransaction(tx.toXDR(), {
         networkPassphrase: passphrase,
       });
@@ -423,7 +439,19 @@ async function buildSignAndSubmit(
         throw new Error(`Signing failed: ${signedResult.error}`);
       }
 
+      // #242 — Runtime shape guard on the wallet's response.  TypeScript's
+      // type assertion above provides no runtime guarantee: a version mismatch,
+      // an API change in the Freighter extension, or a compromised extension
+      // could return a missing or non-string `signedTxXdr`.  Catching that
+      // here produces a clear "unexpected wallet response" error instead of a
+      // confusing low-level parse failure inside TransactionBuilder.fromXDR.
       const signedXDR = (signedResult as { signedTxXdr: string }).signedTxXdr;
+      if (typeof signedXDR !== "string" || !signedXDR) {
+        throw new Error(
+          "Wallet returned an unexpected response while signing — signedTxXdr is missing or empty."
+        );
+      }
+
       const signedTx = TransactionBuilder.fromXDR(signedXDR, passphrase);
 
       onPhase?.("submitting");
