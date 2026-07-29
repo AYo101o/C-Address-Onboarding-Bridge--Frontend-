@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
 
 type Step = "form" | "review" | "confirm";
@@ -53,21 +53,30 @@ export default function BridgePage() {
 
   // Balance available for the currently-selected asset. XLM lives in `total`;
   // other assets (e.g. USDC) come from the matching entry in `balances`.
-  const availableBalance =
-    activeBalances === null
-      ? null
-      : asset === "XLM"
-        ? activeBalances.total
-        : activeBalances.balances.find((b) => b.asset === asset)?.amount ?? "0";
+  // Only the asset dropdown and the fetched balances should trigger this
+  // lookup — memoized so typing in the address/amount fields on every
+  // keystroke doesn't re-run the `.find()` over the balances list. (#366)
+  const availableBalance = useMemo(
+    () =>
+      activeBalances === null
+        ? null
+        : asset === "XLM"
+          ? activeBalances.total
+          : (activeBalances.balances.find((b) => b.asset === asset)?.amount ?? "0"),
+    [activeBalances, asset]
+  );
 
   // Spendable balance leaves the XLM minimum reserve untouched; the reserve is
   // only held in XLM, so non-XLM assets can be sent down to zero.
-  const spendableBalance =
-    availableBalance === null
-      ? null
-      : asset === "XLM"
-        ? Number(availableBalance) - Number(getAccountMinimumBalance())
-        : Number(availableBalance);
+  const spendableBalance = useMemo(
+    () =>
+      availableBalance === null
+        ? null
+        : asset === "XLM"
+          ? Number(availableBalance) - Number(getAccountMinimumBalance())
+          : Number(availableBalance),
+    [availableBalance, asset]
+  );
 
   const insufficientBalance =
     spendableBalance !== null &&
@@ -139,7 +148,7 @@ export default function BridgePage() {
       setTxStatus("success");
       setStep("confirm");
     } catch (e: unknown) {
-      setTxError(e instanceof Error ? e.message : "Transaction failed");
+      setTxError(toSafeErrorMessage(e, "Transaction failed. Please try again."));
       setTxStatus("error");
     }
   };
@@ -261,10 +270,11 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">To (C-address)</label>
+                  <label htmlFor="to-address" className="block text-sm font-medium mb-2">To (C-address)</label>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                      <input
+                       id="to-address"
                        type="text"
                        value={toAddress}
                        onChange={(e) => setToAddress(e.target.value)}
@@ -283,10 +293,11 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount</label>
+                  <label htmlFor="bridge-amount" className="block text-sm font-medium mb-2">Amount</label>
                   <div className="flex gap-3">
                     <div className="relative flex-1">
                       <input
+                        id="bridge-amount"
                         type="text"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
@@ -308,6 +319,7 @@ export default function BridgePage() {
                     <select
                       value={asset}
                       onChange={(e) => setAsset(e.target.value)}
+                      aria-label="Asset"
                       className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                       disabled={txStatus !== "idle"}
                     >

@@ -5,7 +5,7 @@ import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLin
 import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
 import Link from "next/link";
-import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel } from "@/lib/stellar";
+import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
 import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
@@ -64,7 +64,7 @@ export default function DashboardPage() {
         setTransactions((prev) => (areTransactionsEqual(prev, txResult) ? prev : txResult));
       } catch (e: unknown) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to fetch data");
+        setError(toSafeErrorMessage(e, "Failed to fetch data. Please try again."));
       } finally {
         if (!cancelled && isInitial) setLoading(false);
       }
