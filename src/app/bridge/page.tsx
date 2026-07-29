@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
+import LiveRegion from "@/components/live-region";
 import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
 
@@ -182,12 +183,8 @@ export default function BridgePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
-            <div aria-live="polite" aria-atomic="true" className="sr-only">
-              {politeAnnouncement}
-            </div>
-            <div aria-live="assertive" aria-atomic="true" className="sr-only">
-              {assertiveAnnouncement}
-            </div>
+            <LiveRegion message={politeAnnouncement} />
+            <LiveRegion politeness="assertive" message={assertiveAnnouncement} />
             {step === "form" && (
               <div className="space-y-6">
                 {isConnected && !isNetworkSupported && (

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
+import LiveRegion from "@/components/live-region";
 
 const MOONPAY_API_KEY = process.env.NEXT_PUBLIC_MOONPAY_API_KEY || "";
 const TRANSAK_API_KEY = process.env.NEXT_PUBLIC_TRANSAK_API_KEY || "";
@@ -149,6 +150,18 @@ export default function OnrampPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
+            {/* Pressing Continue swaps the whole form for the redirect panel and
+                opens a new tab. Focus stays where it was, so an AT user gets no
+                signal that either happened — the region announces the outcome.
+                Mounted outside the step branches so it is already registered
+                when the step flips. */}
+            <LiveRegion
+              message={
+                step === "redirect"
+                  ? `Opened a new tab to complete your purchase with ${provider?.name ?? "the provider"}.`
+                  : ""
+              }
+            />
             {step === "form" && (
               <div className="space-y-6">
                 <div>
@@ -242,8 +255,16 @@ export default function OnrampPage() {
                   </div>
                 </div>
 
+                {/* Raised by the Continue click (missing API key, or a failure
+                    while building the redirect URL) and rendered below the
+                    button the user just pressed, so nothing about it is
+                    self-evident to AT: role="alert" is what makes the failure
+                    reach the user who cannot see it. */}
                 {error && (
-                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                  <div
+                    role="alert"
+                    className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3"
+                  >
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-[var(--error)]">{error}</p>
                   </div>
