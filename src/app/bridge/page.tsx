@@ -261,10 +261,11 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">To (C-address)</label>
+                  <label htmlFor="to-address" className="block text-sm font-medium mb-2">To (C-address)</label>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                      <input
+                       id="to-address"
                        type="text"
                        value={toAddress}
                        onChange={(e) => setToAddress(e.target.value)}
@@ -283,14 +284,20 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount</label>
+                  <label htmlFor="bridge-amount" className="block text-sm font-medium mb-2">Amount</label>
                   <div className="flex gap-3">
                     <div className="relative flex-1">
                       <input
+                        id="bridge-amount"
                         type="text"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="0.00"
+                        aria-invalid={(!validAmount && !!amount) || insufficientBalance}
+                        aria-describedby={
+                          (!validAmount && amount) ? "amount-format-error" :
+                          insufficientBalance ? "amount-balance-error" : undefined
+                        }
                         className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                         disabled={txStatus !== "idle"}
                       />
@@ -308,6 +315,7 @@ export default function BridgePage() {
                     <select
                       value={asset}
                       onChange={(e) => setAsset(e.target.value)}
+                      aria-label="Asset to send"
                       className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                       disabled={txStatus !== "idle"}
                     >
@@ -316,12 +324,12 @@ export default function BridgePage() {
                     </select>
                   </div>
                   {!validAmount && amount && (
-                    <p className="text-xs text-[var(--error)] mt-1">
+                    <p id="amount-format-error" className="text-xs text-[var(--error)] mt-1" role="alert">
                       Invalid amount. Enter a positive number with up to 7 decimal places (e.g. &quot;10&quot; or &quot;0.5&quot;).
                     </p>
                   )}
                   {insufficientBalance && (
-                    <p className="text-xs text-[var(--error)] mt-1">
+                    <p id="amount-balance-error" className="text-xs text-[var(--error)] mt-1" role="alert">
                       Insufficient balance. Available:{" "}
                       {spendableBalance !== null ? Math.max(spendableBalance, 0).toFixed(2) : "0.00"} {asset}
                       {asset === "XLM" ? " (after minimum reserve)" : ""}
