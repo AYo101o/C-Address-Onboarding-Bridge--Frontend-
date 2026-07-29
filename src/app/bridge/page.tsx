@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
 
 type Step = "form" | "review" | "confirm";
@@ -40,6 +40,10 @@ export default function BridgePage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
   const [sourceBalances, setSourceBalances] = useState<AccountBalances | null>(null);
+  // Fee estimate fetched from Horizon when the user moves to the review step.
+  // Falls back to the static placeholder if the fetch fails. (#257)
+  const FALLBACK_FEE = "~0.00001 XLM";
+  const [estimatedFee, setEstimatedFee] = useState<string>(FALLBACK_FEE);
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
@@ -109,6 +113,13 @@ export default function BridgePage() {
     if (!canProceed) return;
     setStep("review");
     setTxError(null);
+    // Fetch a fresh fee estimate in the background; if it fails the
+    // fallback value already set in state is shown instead. (#257)
+    getEstimatedFeeXLM(network).then((fee) => setEstimatedFee(fee)).catch(() => {
+      // getEstimatedFeeXLM never throws (it falls back internally), but
+      // guard here for defence in depth.
+      setEstimatedFee(FALLBACK_FEE);
+    });
   };
 
   const handleConfirm = async () => {
@@ -370,7 +381,7 @@ export default function BridgePage() {
                   </div>
                   <div className="flex justify-between items-center p-4 rounded-lg bg-[var(--surface-2)]">
                     <span className="text-sm text-[var(--text-muted)]">Fee</span>
-                    <span className="text-sm">~0.00001 XLM</span>
+                    <span className="text-sm">{estimatedFee}</span>
                   </div>
                 </div>
 
