@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2, X } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
+import AvatarUpload from "@/components/avatar-upload";
 import TransactionHistory from "@/components/transaction-history";
 import LiveRegion from "@/components/live-region";
 import Link from "next/link";
@@ -139,8 +140,8 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex items-center justify-between mb-8">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
           <p className="text-[var(--text-muted)]">Manage your C-address funding activity</p>
         </div>
@@ -151,6 +152,10 @@ export default function DashboardPage() {
           <Plus className="w-4 h-4" />
           New Bridge
         </Link>
+      </div>
+
+      <div className="card p-5 mb-8">
+        <AvatarUpload address={address ?? null} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

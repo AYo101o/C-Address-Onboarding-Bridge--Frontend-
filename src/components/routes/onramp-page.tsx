@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -171,10 +171,14 @@ export default function OnrampPage() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium mb-3">Select Provider</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Single column on phones: at ~320px two provider cards left the
+                      name, description and fee/limit rows overlapping their own
+                      borders. (#341) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {providers.map((p) => (
                       <button
                         key={p.id}
+                        type="button"
                         onClick={() => { setSelectedProvider(p.id); setError(null); }}
                         aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
@@ -183,16 +187,18 @@ export default function OnrampPage() {
                             : "border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)]"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold">{p.name}</span>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="font-semibold truncate">{p.name}</span>
                           {selectedProvider === p.id && (
-                            <Check className="w-4 h-4 text-[var(--primary)]" />
+                            <Check className="w-4 h-4 shrink-0 text-[var(--primary)]" />
                           )}
                         </div>
                         <p className="text-xs text-[var(--text-muted)] mb-1">{p.description}</p>
-                        <div className="flex gap-2 text-xs text-[var(--text-muted)]">
+                        {/* Wrap instead of overflowing: "$15 - $25,000" does not fit
+                            beside the fee on a narrow card. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
                           <span>Fee: {p.fee}</span>
-                          <span>•</span>
+                          <span aria-hidden="true">•</span>
                           <span>{p.limits}</span>
                         </div>
                       </button>
@@ -241,21 +247,25 @@ export default function OnrampPage() {
                    )}
                 </div>
 
+                {/* Every row is label + value with the label pinned and the value
+                    allowed to shrink/wrap. Previously a long amount (the field is
+                    free text) grew the row past the card edge because flex items
+                    do not shrink below their content width by default. (#341) */}
                 <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
                   <h4 className="text-sm font-medium mb-2">Estimated Output</h4>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-muted)]">You pay</span>
-                    <span>${fiatAmount || "0"} USD</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm">
+                    <span className="shrink-0 text-[var(--text-muted)]">You pay</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">${fiatAmount || "0"} USD</span>
                   </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
-                    <span>
-                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
+                  <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
+                    <span className="shrink-0 text-[var(--text-muted)]">Fee ({provider?.fee})</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">
+                      -${fiatAmount && validAmount ? feeAmount.toFixed(2) : "0"}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-[var(--text-muted)]">Est. receive</span>
-                    <span className="font-semibold">
+                  <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
+                    <span className="shrink-0 text-[var(--text-muted)]">Est. receive</span>
+                    <span className="min-w-0 text-right break-all tabular-nums font-semibold">
                       {fiatAmount && validAmount
                         ? `~${receiveAmount.toFixed(2)} USDC`
                         : "—"}
@@ -279,12 +289,13 @@ export default function OnrampPage() {
                 )}
 
                 <button
+                  type="button"
                   onClick={handleProviderRedirect}
                   disabled={!canProceed}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CreditCard className="w-4 h-4" />
-                  Continue with {provider?.name}
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Continue with {provider?.name}</span>
                 </button>
               </div>
             )}
@@ -303,14 +314,15 @@ export default function OnrampPage() {
                     href={redirectUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
+                    className="inline-flex items-start gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Checkout didn&apos;t open? Continue to {provider?.name}
+                    <ExternalLink className="w-3 h-3 shrink-0 mt-1" />
+                    <span>Checkout didn&apos;t open? Continue to {provider?.name}</span>
                   </a>
                 )}
                 <div className="mt-4">
                   <button
+                    type="button"
                     onClick={() => { setStep("form"); setRedirectUrl(null); }}
                     className="text-sm text-[var(--primary-light)] hover:underline"
                   >
@@ -328,9 +340,9 @@ export default function OnrampPage() {
             <div className="space-y-3">
               {providers.map((p) => (
                 <div key={p.id} className="p-3 rounded-lg bg-[var(--surface-2)]">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm">{p.name}</span>
-                    {selectedProvider === p.id && <Check className="w-4 h-4 text-[var(--primary)]" />}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-medium text-sm truncate">{p.name}</span>
+                    {selectedProvider === p.id && <Check className="w-4 h-4 shrink-0 text-[var(--primary)]" />}
                   </div>
                   <p className="text-xs text-[var(--text-muted)]">{p.description}</p>
                 </div>
