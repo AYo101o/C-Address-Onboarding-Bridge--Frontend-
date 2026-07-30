@@ -280,6 +280,13 @@ export async function getAccountBalances(
   address: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<AccountBalances> {
+  // Reject structurally invalid addresses before hitting the network.
+  // An empty or malformed address would produce an opaque Horizon 400/404
+  // that obscures the real cause and could log confusing errors.
+  if (!isValidStellarAddress(address)) {
+    return { total: "0", balances: [] };
+  }
+
   const key = `${address}:${network}`;
   const now = Date.now();
 
@@ -315,12 +322,18 @@ export async function fetchRecentTransactions(
   network: StellarNetwork,
   limit: number = 10
 ): Promise<BridgeTransactionData[]> {
+  // Reject invalid addresses before hitting the network and clamp the
+  // limit to a safe range (1–200) to prevent unexpectedly large requests.
+  if (!isValidStellarAddress(address)) {
+    return [];
+  }
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 200);
   const server = await getHorizonServer(network);
   try {
     const payments = await server
       .payments()
       .forAccount(address)
-      .limit(limit)
+      .limit(safeLimit)
       .order("desc")
       .call();
 
@@ -414,6 +427,22 @@ async function buildSignAndSubmit(
         .build();
 
       onPhase?.("signing");
+
+      // #241 — Re-fetch the wallet's current network immediately before
+      // signing.  The user may have switched networks in Freighter during the
+      // time between the app loading and the "Confirm" click.  If the wallet
+      // is no longer on the same network the transaction was built for, abort
+      // here with a clear, actionable message rather than signing a transaction
+      // that will either fail at submission or, worse, succeed on the wrong
+      // chain.
+      const currentNetwork = await getCurrentNetwork();
+      if (currentNetwork !== network) {
+        throw new Error(
+          "Network changed in Freighter — please retry. " +
+          `Transaction was built for ${network} but Freighter is now on ${currentNetwork}.`
+        );
+      }
+
       const signedResult = await signTransaction(tx.toXDR(), {
         networkPassphrase: passphrase,
       });
@@ -422,7 +451,19 @@ async function buildSignAndSubmit(
         throw new Error(`Signing failed: ${signedResult.error}`);
       }
 
+      // #242 — Runtime shape guard on the wallet's response.  TypeScript's
+      // type assertion above provides no runtime guarantee: a version mismatch,
+      // an API change in the Freighter extension, or a compromised extension
+      // could return a missing or non-string `signedTxXdr`.  Catching that
+      // here produces a clear "unexpected wallet response" error instead of a
+      // confusing low-level parse failure inside TransactionBuilder.fromXDR.
       const signedXDR = (signedResult as { signedTxXdr: string }).signedTxXdr;
+      if (typeof signedXDR !== "string" || !signedXDR) {
+        throw new Error(
+          "Wallet returned an unexpected response while signing — signedTxXdr is missing or empty."
+        );
+      }
+
       const signedTx = TransactionBuilder.fromXDR(signedXDR, passphrase);
 
       onPhase?.("submitting");
@@ -570,7 +611,10 @@ export function getExplorerUrl(
   const base = network === "PUBLIC"
     ? "https://stellar.expert/explorer/public"
     : "https://stellar.expert/explorer/testnet";
-  return `${base}/${type}/${id}`;
+  // Encode the id segment to prevent path-traversal or injection via a
+  // crafted id value (e.g. one containing "../" or "?" characters).
+  const safeId = encodeURIComponent(id);
+  return `${base}/${type}/${safeId}`;
 }
 
 export function getAccountMinimumBalance(): string {
@@ -601,4 +645,27 @@ export async function getRecommendedFee(network: StellarNetwork): Promise<string
     // so the transaction is still submitted rather than silently blocked.
     return BASE_FEE;
   }
+}
+
+/** Stroops per XLM (1 XLM = 10,000,000 stroops). */
+const STROOPS_PER_XLM = 10_000_000;
+
+/**
+ * Fetch the current estimated network fee and return it as a human-readable
+ * XLM string suitable for display on the review screen (e.g. "~0.0002 XLM").
+ *
+ * Calls {@link getRecommendedFee} which already handles the Horizon
+ * fee-stats fetch and falls back to BASE_FEE on error, so this function
+ * never throws. (#257)
+ *
+ * @param network - "PUBLIC" or "TESTNET"
+ * @returns Fee string in the form "~X.XXXXXXX XLM"
+ */
+export async function getEstimatedFeeXLM(network: StellarNetwork): Promise<string> {
+  const stroops = await getRecommendedFee(network);
+  const xlm = Number(stroops) / STROOPS_PER_XLM;
+  // Show up to 7 decimal places and strip trailing zeros so
+  // "~0.00002 XLM" is shown rather than "~0.0000200 XLM".
+  const formatted = xlm.toFixed(7).replace(/\.?0+$/, "") || "0";
+  return `~${formatted} XLM`;
 }

@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
-import LiveRegion from "@/components/live-region";
+import { useDebounce } from "@/hooks/useDebounce";
 
 const MOONPAY_API_KEY = process.env.NEXT_PUBLIC_MOONPAY_API_KEY || "";
 const TRANSAK_API_KEY = process.env.NEXT_PUBLIC_TRANSAK_API_KEY || "";
@@ -101,9 +101,14 @@ export default function OnrampPage() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   const provider = providers.find((p) => p.id === selectedProvider);
-  const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
-  const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
-  const canProceed = cAddress && fiatAmount && validAddress && validAmount;
+  // Debounce address and amount validation to avoid running expensive
+  // StrKey checks on every keystroke — validation fires 300 ms after the
+  // user stops typing instead of on every character change.
+  const debouncedCAddress = useDebounce(cAddress, 300);
+  const debouncedFiatAmount = useDebounce(fiatAmount, 300);
+  const validAddress = !debouncedCAddress || (isValidStellarAddress(debouncedCAddress) && isCAddress(debouncedCAddress));
+  const validAmount = !debouncedFiatAmount || /^\d+(\.\d{1,2})?$/.test(debouncedFiatAmount);
+  const canProceed = cAddress && fiatAmount && validAddress && validAmount && debouncedCAddress === cAddress && debouncedFiatAmount === fiatAmount;
 
   const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
     Number(fiatAmount) || 0,
@@ -196,10 +201,11 @@ export default function OnrampPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Destination C-Address</label>
+                  <label htmlFor="onramp-c-address" className="block text-sm font-medium mb-2">Destination C-Address</label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
+                       id="onramp-c-address"
                        type="text"
                        value={cAddress}
                        onChange={(e) => setCAddress(e.target.value)}
@@ -209,16 +215,17 @@ export default function OnrampPage() {
                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
                      />
                    </div>
-                   {!validAddress && cAddress && (
+                   {!validAddress && debouncedCAddress && (
                      <p id="c-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid C-address (must start with C, 56 characters)</p>
                    )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount (USD)</label>
+                  <label htmlFor="onramp-fiat-amount" className="block text-sm font-medium mb-2">Amount (USD)</label>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
+                       id="onramp-fiat-amount"
                        type="text"
                        value={fiatAmount}
                        onChange={(e) => setFiatAmount(e.target.value)}
@@ -228,7 +235,7 @@ export default function OnrampPage() {
                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                      />
                    </div>
-                   {!validAmount && fiatAmount && (
+                   {!validAmount && debouncedFiatAmount && (
                      <p id="fiat-amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
                    )}
                 </div>
