@@ -28,13 +28,15 @@ vi.mock("next/link", () => ({
 }));
 
 // Mock wallet provider
+const mockUseWallet = vi.fn(() => ({
+  isConnected: false,
+  address: null,
+  connect: vi.fn(),
+  isConnecting: false,
+}));
+
 vi.mock("@/components/wallet-provider", () => ({
-  useWallet: () => ({
-    isConnected: false,
-    address: null,
-    connect: vi.fn(),
-    isConnecting: false,
-  }),
+  useWallet: () => mockUseWallet(),
 }));
 
 describe("Navbar Mobile Menu A11Y & Focus Management", () => {
@@ -58,6 +60,12 @@ describe("Navbar Mobile Menu A11Y & Focus Management", () => {
     }
     container = null;
     root = null;
+    mockUseWallet.mockReturnValue({
+      isConnected: false,
+      address: null,
+      connect: vi.fn(),
+      isConnecting: false,
+    });
     vi.restoreAllMocks();
   });
 
@@ -143,6 +151,39 @@ describe("Navbar Mobile Menu A11Y & Focus Management", () => {
     expect(document.activeElement).toBe(toggleBtn);
 
     vi.useRealTimers();
+  });
+
+  it("renders an identical network badge in the desktop and mobile wallet-status displays", async () => {
+    mockUseWallet.mockReturnValue({
+      isConnected: true,
+      address: "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV",
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      isConnecting: false,
+      network: "TESTNET",
+      networkStatus: "TESTNET",
+      walletNetworkName: "Testnet",
+      isNetworkSupported: true,
+      networkMismatch: false,
+      dismissNetworkMismatch: vi.fn(),
+    });
+
+    await act(async () => {
+      root?.render(<Navbar />);
+    });
+
+    // The mobile wallet-status display only mounts while the mobile menu is open.
+    const toggleBtn = container?.querySelector('button[aria-controls="mobile-menu"]') as HTMLButtonElement;
+    await act(async () => {
+      toggleBtn.click();
+    });
+
+    const badges = container?.querySelectorAll('span[title="Connected to Testnet"]');
+    expect(badges?.length).toBe(2);
+    badges?.forEach((badge) => {
+      expect(badge.textContent).toBe("Testnet");
+      expect(badge.className).toContain("rounded-full");
+    });
   });
 
   it("restores focus to toggle button when mobile menu is closed via toggle button click", async () => {
