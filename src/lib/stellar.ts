@@ -280,6 +280,13 @@ export async function getAccountBalances(
   address: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<AccountBalances> {
+  // Reject structurally invalid addresses before hitting the network.
+  // An empty or malformed address would produce an opaque Horizon 400/404
+  // that obscures the real cause and could log confusing errors.
+  if (!isValidStellarAddress(address)) {
+    return { total: "0", balances: [] };
+  }
+
   const key = `${address}:${network}`;
   const now = Date.now();
 
@@ -315,12 +322,18 @@ export async function fetchRecentTransactions(
   network: StellarNetwork,
   limit: number = 10
 ): Promise<BridgeTransactionData[]> {
+  // Reject invalid addresses before hitting the network and clamp the
+  // limit to a safe range (1–200) to prevent unexpectedly large requests.
+  if (!isValidStellarAddress(address)) {
+    return [];
+  }
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 200);
   const server = await getHorizonServer(network);
   try {
     const payments = await server
       .payments()
       .forAccount(address)
-      .limit(limit)
+      .limit(safeLimit)
       .order("desc")
       .call();
 
@@ -598,7 +611,10 @@ export function getExplorerUrl(
   const base = network === "PUBLIC"
     ? "https://stellar.expert/explorer/public"
     : "https://stellar.expert/explorer/testnet";
-  return `${base}/${type}/${id}`;
+  // Encode the id segment to prevent path-traversal or injection via a
+  // crafted id value (e.g. one containing "../" or "?" characters).
+  const safeId = encodeURIComponent(id);
+  return `${base}/${type}/${safeId}`;
 }
 
 export function getAccountMinimumBalance(): string {
