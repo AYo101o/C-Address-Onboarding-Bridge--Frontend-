@@ -85,12 +85,15 @@ describe('Localization (#361)', () => {
   });
 });
 
-function getAllKeys(obj: Record<string, unknown>, prefix = ''): string[] {
+// Typed `object`, not `Record<string, unknown>`: `TranslationSet` declares named
+// fields and no index signature, so it is not assignable to a Record and the
+// call sites below would not typecheck.
+function getAllKeys(obj: object, prefix = ''): string[] {
   const keys: string[] = [];
   for (const [k, v] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${k}` : k;
     if (v && typeof v === 'object') {
-      keys.push(...getAllKeys(v as Record<string, unknown>, path));
+      keys.push(...getAllKeys(v, path));
     } else {
       keys.push(path);
     }
@@ -98,11 +101,11 @@ function getAllKeys(obj: Record<string, unknown>, prefix = ''): string[] {
   return keys;
 }
 
-function getAllValues(obj: Record<string, unknown>): string[] {
+function getAllValues(obj: object): string[] {
   const values: string[] = [];
   for (const v of Object.values(obj)) {
     if (v && typeof v === 'object') {
-      values.push(...getAllValues(v as Record<string, unknown>));
+      values.push(...getAllValues(v));
     } else if (typeof v === 'string') {
       values.push(v);
     }

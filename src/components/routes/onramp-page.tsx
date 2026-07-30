@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
+import LiveRegion from "@/components/live-region";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 import { useDebounce } from "@/hooks/useDebounce";
 import LiveRegion from "@/components/live-region";

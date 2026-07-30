@@ -9,6 +9,7 @@ export const ROUTES = {
   BRIDGE: '/bridge',
   ONRAMP: '/onramp',
   CEX: '/cex',
+  PROFILE: '/profile',
 } as const;
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
@@ -25,6 +26,9 @@ export const ROUTE_CONFIGS: RouteConfig[] = [
   { path: ROUTES.BRIDGE, label: 'Bridge', requiresWallet: true },
   { path: ROUTES.ONRAMP, label: 'On-Ramp', requiresWallet: false },
   { path: ROUTES.CEX, label: 'CEX', requiresWallet: false },
+  // Profile data is keyed on the connected address, so there is nothing to show
+  // without a wallet. (#325)
+  { path: ROUTES.PROFILE, label: 'Profile', requiresWallet: true },
 ];
 
 /**

@@ -75,8 +75,17 @@ async function clickAndSettle(el: Element) {
   });
 }
 
+/**
+ * Text of the `<LiveRegion>` announcement region.
+ *
+ * Matched on `aria-atomic` as well as `aria-live`, which is what distinguishes a
+ * `<LiveRegion>` from an ordinary polite region. Pages carry both: the avatar
+ * control on the dashboard, for instance, has its own `aria-live` hint
+ * paragraph, and a bare `[aria-live="polite"]` selector picked up whichever came
+ * first in the DOM rather than the announcement under test.
+ */
 const politeText = (container: HTMLElement) =>
-  container.querySelector('[aria-live="polite"]')?.textContent ?? null;
+  container.querySelector('[aria-live="polite"][aria-atomic="true"]')?.textContent ?? null;
 
 describe("LiveRegion", () => {
   afterEach(cleanup);
