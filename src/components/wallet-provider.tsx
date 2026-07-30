@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { connectWallet, checkConnection, getWalletAddress, getWalletNetwork } from "@/lib/stellar";
 import { APP_NETWORK, isSupportedNetwork, type StellarNetwork, type WalletNetworkState } from "@/lib/types";
+import { loadSession, markConnected, markDisconnected } from "@/lib/session";
 
 interface WalletContextType {
   address: string | null;
@@ -70,8 +71,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
    * Sticky record of the user having pressed Disconnect. The poller runs every
    * few seconds and would otherwise re-set the address straight back from
    * Freighter, silently undoing the disconnect. (#288)
+   *
+   * Backed by the persisted session (`@/lib/session`) so the decision also
+   * survives a page reload; it is hydrated lazily by `isManuallyDisconnected`
+   * below rather than in an initialiser, because reading storage during render
+   * would diverge between the server and the client. (#343)
    */
-  const manuallyDisconnectedRef = useRef(false);
+  const manuallyDisconnectedRef = useRef<boolean | null>(null);
+
+  /**
+   * Reads the sticky disconnect flag, hydrating it from the stored session on
+   * first use. Only the first call touches storage; every later call is a ref
+   * read, so the 3–10s poll does no storage work.
+   */
+  const isManuallyDisconnected = useCallback(() => {
+    if (manuallyDisconnectedRef.current === null) {
+      manuallyDisconnectedRef.current = loadSession().manuallyDisconnected;
+    }
+    return manuallyDisconnectedRef.current;
+  }, []);
 
   const dismissNetworkMismatch = useCallback(() => {
     dismissedRef.current = true;
@@ -93,8 +111,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateConnection = useCallback(async () => {
-    // Respect an explicit disconnect until the user reconnects. (#288)
-    if (manuallyDisconnectedRef.current) return;
+    // Respect an explicit disconnect until the user reconnects, including one
+    // made before the last reload. (#288, #343)
+    if (isManuallyDisconnected()) return;
 
     const isConnected = await checkConnection();
     if (isConnected) {
@@ -126,7 +145,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setNetworkStatus(APP_NETWORK);
       setWalletNetworkName(null);
     }
-  }, [applyNetwork]);
+  }, [applyNetwork, isManuallyDisconnected]);
 
   const connect = useCallback(async () => {
     // An explicit connect clears the sticky disconnect so polling resumes. (#288)
@@ -135,6 +154,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     try {
       const pk = await connectWallet();
       if (pk) {
+        // Persist the cleared flag only once a wallet actually answered, so a
+        // cancelled Freighter prompt leaves an earlier disconnect in place.
+        markConnected(pk);
         setAddress(pk);
         const { status, name } = await getWalletNetwork();
         applyNetwork(status, name);
@@ -143,6 +165,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         initialNetworkRef.current = isSupportedNetwork(status) ? status : null;
         dismissedRef.current = false;
         setNetworkMismatch(false);
+      } else {
+        // Freighter handed back no address (prompt dismissed / locked): leave
+        // the stored session decision in force instead of letting a failed
+        // attempt count as a reconnect.
+        manuallyDisconnectedRef.current = loadSession().manuallyDisconnected;
       }
     } finally {
       setIsConnecting(false);
@@ -151,13 +178,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(() => {
     manuallyDisconnectedRef.current = true;
+    // Persist so the connection poller does not re-adopt the wallet after a
+    // reload. Lapses after SESSION_TTL_MS. (#343)
+    markDisconnected(address);
     setAddress(null);
     initialNetworkRef.current = null;
     dismissedRef.current = false;
     setNetworkMismatch(false);
     setNetworkStatus(APP_NETWORK);
     setWalletNetworkName(null);
-  }, []);
+  }, [address]);
 
   // Polling with backoff + visibility awareness
   useEffect(() => {
