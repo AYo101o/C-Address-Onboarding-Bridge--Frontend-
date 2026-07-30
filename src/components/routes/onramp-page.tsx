@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
+import { useDebounce } from "@/hooks/useDebounce";
 
 const MOONPAY_API_KEY = process.env.NEXT_PUBLIC_MOONPAY_API_KEY || "";
 const TRANSAK_API_KEY = process.env.NEXT_PUBLIC_TRANSAK_API_KEY || "";
@@ -100,9 +101,14 @@ export default function OnrampPage() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   const provider = providers.find((p) => p.id === selectedProvider);
-  const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
-  const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
-  const canProceed = cAddress && fiatAmount && validAddress && validAmount;
+  // Debounce address and amount validation to avoid running expensive
+  // StrKey checks on every keystroke — validation fires 300 ms after the
+  // user stops typing instead of on every character change.
+  const debouncedCAddress = useDebounce(cAddress, 300);
+  const debouncedFiatAmount = useDebounce(fiatAmount, 300);
+  const validAddress = !debouncedCAddress || (isValidStellarAddress(debouncedCAddress) && isCAddress(debouncedCAddress));
+  const validAmount = !debouncedFiatAmount || /^\d+(\.\d{1,2})?$/.test(debouncedFiatAmount);
+  const canProceed = cAddress && fiatAmount && validAddress && validAmount && debouncedCAddress === cAddress && debouncedFiatAmount === fiatAmount;
 
   const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
     Number(fiatAmount) || 0,
@@ -149,6 +155,18 @@ export default function OnrampPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
+            {/* Pressing Continue swaps the whole form for the redirect panel and
+                opens a new tab. Focus stays where it was, so an AT user gets no
+                signal that either happened — the region announces the outcome.
+                Mounted outside the step branches so it is already registered
+                when the step flips. */}
+            <LiveRegion
+              message={
+                step === "redirect"
+                  ? `Opened a new tab to complete your purchase with ${provider?.name ?? "the provider"}.`
+                  : ""
+              }
+            />
             {step === "form" && (
               <div className="space-y-6">
                 <div>
@@ -189,6 +207,7 @@ export default function OnrampPage() {
                     <input
                        id="onramp-c-address"
                        type="text"
+                       autoComplete="off"
                        value={cAddress}
                        onChange={(e) => setCAddress(e.target.value)}
                        placeholder="CABC...DEF"
@@ -197,7 +216,7 @@ export default function OnrampPage() {
                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
                      />
                    </div>
-                   {!validAddress && cAddress && (
+                   {!validAddress && debouncedCAddress && (
                      <p id="c-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid C-address (must start with C, 56 characters)</p>
                    )}
                 </div>
@@ -217,7 +236,7 @@ export default function OnrampPage() {
                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                      />
                    </div>
-                   {!validAmount && fiatAmount && (
+                   {!validAmount && debouncedFiatAmount && (
                      <p id="fiat-amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
                    )}
                 </div>
@@ -244,8 +263,16 @@ export default function OnrampPage() {
                   </div>
                 </div>
 
+                {/* Raised by the Continue click (missing API key, or a failure
+                    while building the redirect URL) and rendered below the
+                    button the user just pressed, so nothing about it is
+                    self-evident to AT: role="alert" is what makes the failure
+                    reach the user who cannot see it. */}
                 {error && (
-                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                  <div
+                    role="alert"
+                    className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3"
+                  >
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-[var(--error)]">{error}</p>
                   </div>

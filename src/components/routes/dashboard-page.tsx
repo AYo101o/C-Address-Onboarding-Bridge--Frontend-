@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2, X } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
+import LiveRegion from "@/components/live-region";
 import Link from "next/link";
-import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
-import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
+import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel } from "@/lib/stellar";
+import type { BridgeTransactionData } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 /** How often the dashboard polls for updated balances and transactions. */
@@ -70,10 +71,22 @@ export default function DashboardPage() {
       }
     };
     fetchData(true);
-    const interval = setInterval(() => fetchData(false), DASHBOARD_POLL_INTERVAL_MS);
+    // Polling in a hidden/background tab burns network and battery for data
+    // nobody is looking at. Skip the tick while hidden, and catch up
+    // immediately the moment the tab becomes visible again instead of waiting
+    // out the rest of the interval.
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchData(false);
+    }, DASHBOARD_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchData(false);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isConnected, address, network, isNetworkSupported]);
 
@@ -89,6 +102,17 @@ export default function DashboardPage() {
     if (!address) return;
     copyToClipboard(address);
   };
+
+  // The copy button reports its result by swapping icons (and, on failure, by
+  // adding a "Copy failed" label) — both invisible to a screen reader, which is
+  // still parked on the button and hears nothing. Announcing the outcome is the
+  // only feedback AT users get that the address reached the clipboard.
+  const copyAnnouncement =
+    copyStatus === "copied"
+      ? "Wallet address copied to clipboard."
+      : copyStatus === "error"
+        ? "Copy failed. Check clipboard permissions and try again."
+        : "";
 
   if (!isConnected) {
     return (
@@ -141,6 +165,12 @@ export default function DashboardPage() {
             </code>
             <button
               onClick={handleCopy}
+              // title alone is an unreliable accessible name (it is skipped by
+              // some AT and unavailable on touch), so name the button
+              // explicitly and keep title for the sighted tooltip. The name
+              // describes the action, not the result — the result is announced
+              // through the live region below.
+              aria-label="Copy wallet address"
               title={copyStatus === "error" ? "Copy failed — check clipboard permissions" : "Copy address"}
               className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors"
             >
@@ -155,6 +185,7 @@ export default function DashboardPage() {
             {copyStatus === "error" && (
               <span className="text-xs text-[var(--error,#ef4444)]">Copy failed</span>
             )}
+            <LiveRegion message={copyAnnouncement} />
           </div>
           <div className="text-xs text-[var(--text-muted)] mt-1">
             <span className={isNetworkSupported ? undefined : "text-[var(--error)] font-medium"}>
@@ -261,8 +292,15 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* The fetch error appears asynchronously (initial load or a 30s poll
+          tick), so without role="alert" it is never announced — a sighted user
+          sees the balance/activity failure, an AT user sees nothing change. The
+          unsupported-network banner above already carries the same role. */}
       {error && (
-        <div className="mb-6 p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 text-sm text-[var(--error)]">
+        <div
+          role="alert"
+          className="mb-6 p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 text-sm text-[var(--error)]"
+        >
           {error}
         </div>
       )}

@@ -1,3 +1,17 @@
+/**
+ * Site-wide footer.
+ *
+ * Structure:
+ * - Brand/summary column describing the C-Address Bridge protocol.
+ * - "Protocol" column: internal links to the three funding routes
+ *   (`/bridge`, `/onramp`, `/cex`) that also appear in the navbar.
+ * - "Resources" column: external links (Soroban docs, GitHub, Stellar.org),
+ *   all opened via `target="_blank"` with `rel="noopener noreferrer"`.
+ * - A bottom bar with a disclaimer and the protocol name.
+ *
+ * Purely presentational — no state, no props. Memoized since it never
+ * changes across route navigations.
+ */
 import React, { memo } from "react";
 import { Wallet } from "lucide-react";
 
