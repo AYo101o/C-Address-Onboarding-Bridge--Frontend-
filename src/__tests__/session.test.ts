@@ -75,4 +75,32 @@ describe("wallet session persistence (#343)", () => {
     expect(isSessionExpired(session, NOW + SESSION_TTL_MS + 1)).toBe(true);
     expect(isSessionExpired({ ...session, updatedAt: NaN }, NOW)).toBe(true);
   });
+
+  it("markDisconnected returns the written session", () => {
+    const result = markDisconnected(ADDRESS, NOW);
+    expect(result.manuallyDisconnected).toBe(true);
+    expect(result.address).toBe(ADDRESS);
+    expect(result.updatedAt).toBe(NOW);
+  });
+
+  it("markConnected returns the written session", () => {
+    const result = markConnected(ADDRESS, NOW);
+    expect(result.manuallyDisconnected).toBe(false);
+    expect(result.address).toBe(ADDRESS);
+    expect(result.updatedAt).toBe(NOW);
+  });
+
+  it("markDisconnected with no address defaults to null", () => {
+    const result = markDisconnected(undefined, NOW);
+    expect(result.address).toBeNull();
+    expect(result.manuallyDisconnected).toBe(true);
+  });
+
+  it("markConnected with null address clears the disconnect flag", () => {
+    markDisconnected(ADDRESS, NOW);
+    markConnected(null, NOW + 1000);
+    const session = loadSession(NOW + 2000);
+    expect(session.manuallyDisconnected).toBe(false);
+    expect(session.address).toBeNull();
+  });
 });
