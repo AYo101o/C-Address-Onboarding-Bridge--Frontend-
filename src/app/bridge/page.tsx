@@ -5,6 +5,7 @@ import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, 
 import { useWallet } from "@/components/wallet-provider";
 import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
+import { useDebounce } from "@/hooks/useDebounce";
 
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
@@ -46,9 +47,13 @@ export default function BridgePage() {
   const [estimatedFee, setEstimatedFee] = useState<string>(FALLBACK_FEE);
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
-  const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
+  // Debounce address/amount validation to avoid running StrKey CRC checks on
+  // every keystroke — validation fires 300 ms after the user stops typing.
+  const debouncedToAddress = useDebounce(toAddress, 300);
+  const debouncedAmount = useDebounce(amount, 300);
+  const validTo = !debouncedToAddress || (isValidStellarAddress(debouncedToAddress) && isCAddress(debouncedToAddress));
   const networkLabel = formatNetworkLabel(networkStatus, walletNetworkName);
-  const validAmount = !amount || isValidStellarAmount(amount);
+  const validAmount = !debouncedAmount || isValidStellarAmount(debouncedAmount);
 
   // Balances are only meaningful for a connected wallet on a supported
   // network; anything cached from before a disconnect or a switch to an
@@ -81,7 +86,7 @@ export default function BridgePage() {
 
   // No Soroban transfer path is implemented yet, so no destination this form
   // accepts (validTo requires a C-address) can actually be bridged. See #284.
-  const bridgingBlocked = Boolean(toAddress) && validTo;
+  const bridgingBlocked = Boolean(debouncedToAddress) && validTo;
 
   const canProceed =
     isConnected &&
@@ -93,6 +98,8 @@ export default function BridgePage() {
     validTo &&
     !insufficientBalance &&
     !bridgingBlocked &&
+    debouncedToAddress === toAddress &&
+    debouncedAmount === amount &&
     txStatus === "idle";
 
   // Balances follow the connected account: no manual "use connected wallet"
@@ -327,7 +334,7 @@ export default function BridgePage() {
                       <option>USDC</option>
                     </select>
                   </div>
-                  {!validAmount && amount && (
+                  {!validAmount && debouncedAmount && (
                     <p className="text-xs text-[var(--error)] mt-1">
                       Invalid amount. Enter a positive number with up to 7 decimal places (e.g. &quot;10&quot; or &quot;0.5&quot;).
                     </p>
