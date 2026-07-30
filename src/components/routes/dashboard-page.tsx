@@ -7,7 +7,7 @@ import AvatarUpload from "@/components/avatar-upload";
 import TransactionHistory from "@/components/transaction-history";
 import LiveRegion from "@/components/live-region";
 import Link from "next/link";
-import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel } from "@/lib/stellar";
+import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
 import type { BridgeTransactionData } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 

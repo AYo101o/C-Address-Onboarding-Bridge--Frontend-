@@ -5,6 +5,7 @@ import { Building2, Copy, Check, ExternalLink, Wallet, X, Clock } from "lucide-r
 import { CEX_LIST, type CexConfig } from "@/lib/types";
 import { isCAddress } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { useDebounce } from "@/hooks/useDebounce";
 import LiveRegion from "@/components/live-region";
 
 /**
