@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Building2, Copy, Check, ExternalLink, Wallet, X, Clock } from "lucide-react";
-import { CEX_LIST } from "@/lib/types";
+import { CEX_LIST, type CexConfig } from "@/lib/types";
 import { isCAddress } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
@@ -20,7 +20,10 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
  *   in the error state instead of a success checkmark. (#300)
  */
 export default function CexPage() {
-  const [selectedCex, setSelectedCex] = useState(CEX_LIST[0]);
+  // Annotated with CexConfig rather than inferred: CEX_LIST is `as const`, so
+  // the inferred type would be the literal type of Binance alone and selecting
+  // any other exchange would not type-check. (#346)
+  const [selectedCex, setSelectedCex] = useState<CexConfig>(CEX_LIST[0]);
   const [cAddress, setCAddress] = useState("");
   const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
 
@@ -47,7 +50,7 @@ export default function CexPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Step 1 */}
           <div className="card p-6">
-            <h3 className="font-semibold mb-4">1. Select Your Exchange</h3>
+            <h2 className="font-semibold mb-4">1. Select Your Exchange</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {CEX_LIST.map((cex) => (
                 <button
@@ -70,7 +73,7 @@ export default function CexPage() {
 
           {/* Step 2 — C-address input with validation */}
           <div className="card p-6">
-            <h3 className="font-semibold mb-4">2. Enter Your C-Address</h3>
+            <h2 className="font-semibold mb-4">2. Enter Your C-Address</h2>
             <p className="text-xs text-[var(--text-muted)] mb-3">
               Your Soroban smart account address. C-addresses start with the letter{" "}
               <code>C</code> and are distinct from regular Stellar G-addresses.
@@ -112,7 +115,7 @@ export default function CexPage() {
 
           {/* Step 3 — Withdrawal details */}
           <div className="card p-6">
-            <h3 className="font-semibold mb-4">3. Withdrawal Details for {selectedCex.name}</h3>
+            <h2 className="font-semibold mb-4">3. Withdrawal Details for {selectedCex.name}</h2>
 
             {/* Bridge deposit address — coming soon (#299) */}
             <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-4 mb-4 flex items-start gap-3">
@@ -169,7 +172,7 @@ export default function CexPage() {
         {/* Sidebar */}
         <div className="space-y-4">
           <div className="card p-5">
-            <h3 className="font-semibold mb-3">Exchange Details</h3>
+            <h2 className="font-semibold mb-3">Exchange Details</h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-[var(--text-muted)]">Exchange</span>
@@ -187,7 +190,7 @@ export default function CexPage() {
           </div>
 
           <div className="card p-5">
-            <h3 className="font-semibold mb-3">How It Works</h3>
+            <h2 className="font-semibold mb-3">How It Works</h2>
             <ol className="space-y-3 text-sm text-[var(--text-muted)]">
               <li className="flex gap-2">
                 <span className="text-[var(--primary-light)] font-medium">1.</span>

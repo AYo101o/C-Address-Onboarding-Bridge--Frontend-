@@ -19,6 +19,7 @@ import {
   BRIDGE_CONTRACT_ID,
   HORIZON_URL,
   SOROBAN_RPC_URL,
+  type BridgeTransactionStatus,
   type StellarNetwork,
   type WalletNetworkState,
 } from "./types";
@@ -335,7 +336,7 @@ export async function fetchRecentTransactions(
 
       // When `transaction_successful` is absent (older Horizon versions) we
       // treat the record as pending rather than assuming it failed. (#294)
-      let status: "pending" | "confirmed" | "failed";
+      let status: BridgeTransactionStatus;
       if (p.transaction_successful === undefined || p.transaction_successful === null) {
         status = "pending";
       } else {
