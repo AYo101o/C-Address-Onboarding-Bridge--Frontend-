@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
 import { useDebounce } from "@/hooks/useDebounce";
+import LiveRegion from "@/components/live-region";
 
 const MOONPAY_API_KEY = process.env.NEXT_PUBLIC_MOONPAY_API_KEY || "";
 const TRANSAK_API_KEY = process.env.NEXT_PUBLIC_TRANSAK_API_KEY || "";
@@ -44,7 +45,7 @@ export function calculateOnrampFeeAndReceive(amount: number, providerId: string)
   return { feeRate, fee, receive };
 }
 
-export function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string): string {
+export function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string, fiatCurrency: string = "USD"): string {
   // Defence-in-depth: re-validate inputs independently of the button's
   // disabled state / canProceed guard. These checks match the same validation
   // logic used at the UI layer (isCAddress from @/lib/stellar and the same
@@ -56,6 +57,9 @@ export function buildProviderUrl(p: typeof providers[number], cAddress: string, 
   }
   if (!/^\d+(\.\d{1,2})?$/.test(fiatAmount)) {
     throw new Error("Invalid amount format.");
+  }
+  if (!p.currencies.includes(fiatCurrency)) {
+    throw new Error(`${p.name} does not support ${fiatCurrency}.`);
   }
 
   // Why URLSearchParams-based construction is safe from injection:
@@ -79,7 +83,7 @@ export function buildProviderUrl(p: typeof providers[number], cAddress: string, 
           walletAddress: cAddress,
           currencyCode: "usdc_xlm",
           baseCurrencyAmount: fiatAmount,
-          baseCurrencyCode: "usd",
+          baseCurrencyCode: fiatCurrency.toLowerCase(),
         })
       : new URLSearchParams({
           apiKey: p.apiKey,
@@ -87,7 +91,7 @@ export function buildProviderUrl(p: typeof providers[number], cAddress: string, 
           network: "stellar",
           defaultCryptoCurrency: "USDC",
           defaultFiatAmount: fiatAmount,
-          fiatCurrency: "USD",
+          fiatCurrency: fiatCurrency,
         });
   return `${p.baseUrl}?${params}`;
 }
@@ -96,11 +100,23 @@ export default function OnrampPage() {
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("moonpay");
+  const [fiatCurrency, setFiatCurrency] = useState("USD");
   const [step, setStep] = useState<"form" | "redirect">("form");
   const [error, setError] = useState<string | null>(null);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   const provider = providers.find((p) => p.id === selectedProvider);
+  // Each provider supports its own currency set (see `providers` above); switching
+  // provider while a currency the new provider doesn't support is selected would
+  // otherwise silently build a redirect URL for a currency never shown to the user.
+  const handleProviderSelect = (id: string) => {
+    setSelectedProvider(id);
+    setError(null);
+    const next = providers.find((p) => p.id === id);
+    if (next && !next.currencies.includes(fiatCurrency)) {
+      setFiatCurrency(next.currencies[0]);
+    }
+  };
   // Debounce address and amount validation to avoid running expensive
   // StrKey checks on every keystroke — validation fires 300 ms after the
   // user stops typing instead of on every character change.
@@ -127,7 +143,7 @@ export default function OnrampPage() {
     }
 
     try {
-      const url = buildProviderUrl(provider, cAddress, fiatAmount);
+      const url = buildProviderUrl(provider, cAddress, fiatAmount, fiatCurrency);
       setRedirectUrl(url);
       setStep("redirect");
       // Open synchronously within the click handler to preserve user activation
@@ -179,7 +195,7 @@ export default function OnrampPage() {
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => { setSelectedProvider(p.id); setError(null); }}
+                        onClick={() => handleProviderSelect(p.id)}
                         aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           selectedProvider === p.id
@@ -228,19 +244,32 @@ export default function OnrampPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="onramp-fiat-amount" className="block text-sm font-medium mb-2">Amount (USD)</label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                    <input
-                       id="onramp-fiat-amount"
-                       type="text"
-                       value={fiatAmount}
-                       onChange={(e) => setFiatAmount(e.target.value)}
-                       placeholder="100.00"
-                       aria-invalid={!validAmount && !!fiatAmount}
-                       aria-describedby={!validAmount && fiatAmount ? "fiat-amount-error" : undefined}
-                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                     />
+                  <label htmlFor="onramp-fiat-amount" className="block text-sm font-medium mb-2">Amount</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+                      <input
+                         id="onramp-fiat-amount"
+                         type="text"
+                         value={fiatAmount}
+                         onChange={(e) => setFiatAmount(e.target.value)}
+                         placeholder="100.00"
+                         aria-invalid={!validAmount && !!fiatAmount}
+                         aria-describedby={!validAmount && fiatAmount ? "fiat-amount-error" : undefined}
+                         className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                       />
+                     </div>
+                     <select
+                       id="onramp-fiat-currency"
+                       value={fiatCurrency}
+                       onChange={(e) => setFiatCurrency(e.target.value)}
+                       aria-label="Currency"
+                       className="px-3 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                     >
+                       {(provider?.currencies ?? []).map((c) => (
+                         <option key={c} value={c}>{c}</option>
+                       ))}
+                     </select>
                    </div>
                    {!validAmount && debouncedFiatAmount && (
                      <p id="fiat-amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
@@ -255,7 +284,7 @@ export default function OnrampPage() {
                   <h4 className="text-sm font-medium mb-2">Estimated Output</h4>
                   <div className="flex justify-between items-baseline gap-3 text-sm">
                     <span className="shrink-0 text-[var(--text-muted)]">You pay</span>
-                    <span className="min-w-0 text-right break-all tabular-nums">${fiatAmount || "0"} USD</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">${fiatAmount || "0"} {fiatCurrency}</span>
                   </div>
                   <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
                     <span className="shrink-0 text-[var(--text-muted)]">Fee ({provider?.fee})</span>

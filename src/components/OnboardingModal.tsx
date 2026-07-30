@@ -69,132 +69,70 @@ export function OnboardingModal({
 
   return (
     <div
-      className="onboarding-overlay"
+      className="onboarding-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Onboarding"
       onKeyDown={handleKeyDown}
       data-testid="onboarding-modal"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        zIndex: 50,
-      }}
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
     >
+      {/* max-h + overflow-y so a long description on a short viewport (mobile
+          landscape, a small popup window) scrolls inside the dialog instead of
+          pushing the Next/Back controls off-screen with no way to reach them. */}
       <div
-        className="onboarding-content"
-        style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '32px',
-          maxWidth: '480px',
-          width: '100%',
-          margin: '16px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-        }}
+        className="onboarding-content card w-full max-w-[480px] max-h-[90vh] overflow-y-auto p-8"
+        style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}
       >
         {/* Progress bar */}
-        <div
-          style={{
-            height: '4px',
-            backgroundColor: '#e5e7eb',
-            borderRadius: '2px',
-            marginBottom: '24px',
-            overflow: 'hidden',
-          }}
-        >
+        <div className="h-1 rounded-full bg-[var(--surface-2)] mb-6 overflow-hidden">
           <div
             data-testid="progress-bar"
-            style={{
-              height: '100%',
-              width: `${progress}%`,
-              backgroundColor: '#3b82f6',
-              borderRadius: '2px',
-              transition: 'width 0.3s ease',
-            }}
+            className="h-full rounded-full bg-[var(--primary)] transition-[width] duration-300 ease-in-out"
+            style={{ width: `${progress}%` }}
           />
         </div>
 
         {/* Step indicator */}
-        <p
-          style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}
-          data-testid="step-indicator"
-        >
+        <p className="text-sm text-[var(--text-muted)] mb-2" data-testid="step-indicator">
           Step {currentStep + 1} of {steps.length}
         </p>
 
         {/* Step content */}
-        {step.icon && (
-          <div style={{ marginBottom: '16px' }}>{step.icon}</div>
-        )}
-        <h2
-          style={{
-            fontSize: '24px',
-            fontWeight: 600,
-            marginBottom: '12px',
-            color: '#111827',
-          }}
-          data-testid="step-title"
-        >
+        {step.icon && <div className="mb-4">{step.icon}</div>}
+        <h2 className="text-2xl font-semibold mb-3 text-[var(--foreground)]" data-testid="step-title">
           {step.title}
         </h2>
-        <p
-          style={{ fontSize: '16px', color: '#4b5563', marginBottom: '32px', lineHeight: 1.6 }}
-          data-testid="step-description"
-        >
+        <p className="text-base text-[var(--text-muted)] mb-8 leading-relaxed" data-testid="step-description">
           {step.description}
         </p>
 
         {/* Navigation buttons */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+        <div className="flex justify-between gap-3">
           {!isFirst ? (
             <button
+              type="button"
               onClick={handleBack}
               data-testid="back-button"
-              style={{
-                padding: '10px 24px',
-                borderRadius: '8px',
-                border: '1px solid #d1d5db',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
+              className="px-6 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-[var(--foreground)] text-sm hover:bg-[var(--border)] transition-colors"
             >
               Back
             </button>
           ) : (
             <button
+              type="button"
               onClick={onClose}
               data-testid="skip-button"
-              style={{
-                padding: '10px 24px',
-                borderRadius: '8px',
-                border: '1px solid #d1d5db',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
+              className="px-6 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-[var(--foreground)] text-sm hover:bg-[var(--border)] transition-colors"
             >
               Skip
             </button>
           )}
           <button
+            type="button"
             onClick={handleNext}
             data-testid="next-button"
-            style={{
-              padding: '10px 24px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 500,
-            }}
+            className="px-6 py-2.5 rounded-lg bg-[var(--primary)] text-white text-sm font-medium hover:bg-[var(--primary)]/90 transition-colors"
           >
             {isLast ? 'Get Started' : 'Next'}
           </button>
