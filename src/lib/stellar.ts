@@ -21,13 +21,16 @@ import {
   SOROBAN_RPC_URL,
   type StellarNetwork,
   type WalletNetworkState,
+  type BridgeTransactionData,
 } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
 
-export type { AppNetwork, WalletNetworkState } from "./types";
+export type { AppNetwork, WalletNetworkState, BridgeTransactionData } from "./types";
+
+/** Seconds a built transaction stays valid before the network rejects it. */
+const TRANSACTION_TIMEOUT_SECONDS = 30;
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
-  const { Horizon } = await import("@stellar/stellar-sdk");
   return new Horizon.Server(HORIZON_URL[network]);
 }
 
@@ -38,12 +41,10 @@ export async function getSorobanRpcServer(network: StellarNetwork): Promise<rpc.
       `No Soroban RPC URL configured for ${network}. Set NEXT_PUBLIC_SOROBAN_RPC_URL_${network} in your environment.`
     );
   }
-  const { rpc } = await import("@stellar/stellar-sdk");
   return new rpc.Server(url);
 }
 
 export async function getNetworkPassphrase(network: StellarNetwork): Promise<string> {
-  const { Networks } = await import("@stellar/stellar-sdk");
   return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
 }
 
@@ -388,8 +389,6 @@ async function buildSignAndSubmit(
   passphrase: string,
   onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
-  const { TransactionBuilder, Operation } = await import("@stellar/stellar-sdk");
-
   // Fetch a dynamic fee bid (2× base fee, capped at 10 000 stroops) so the
   // transaction is not rejected during surge-pricing windows. (#301)
   const fee = await getRecommendedFee(network);
@@ -415,6 +414,22 @@ async function buildSignAndSubmit(
         .build();
 
       onPhase?.("signing");
+
+      // #241 — Re-fetch the wallet's current network immediately before
+      // signing.  The user may have switched networks in Freighter during the
+      // time between the app loading and the "Confirm" click.  If the wallet
+      // is no longer on the same network the transaction was built for, abort
+      // here with a clear, actionable message rather than signing a transaction
+      // that will either fail at submission or, worse, succeed on the wrong
+      // chain.
+      const currentNetwork = await getCurrentNetwork();
+      if (currentNetwork !== network) {
+        throw new Error(
+          "Network changed in Freighter — please retry. " +
+          `Transaction was built for ${network} but Freighter is now on ${currentNetwork}.`
+        );
+      }
+
       const signedResult = await signTransaction(tx.toXDR(), {
         networkPassphrase: passphrase,
       });
@@ -423,7 +438,19 @@ async function buildSignAndSubmit(
         throw new Error(`Signing failed: ${signedResult.error}`);
       }
 
+      // #242 — Runtime shape guard on the wallet's response.  TypeScript's
+      // type assertion above provides no runtime guarantee: a version mismatch,
+      // an API change in the Freighter extension, or a compromised extension
+      // could return a missing or non-string `signedTxXdr`.  Catching that
+      // here produces a clear "unexpected wallet response" error instead of a
+      // confusing low-level parse failure inside TransactionBuilder.fromXDR.
       const signedXDR = (signedResult as { signedTxXdr: string }).signedTxXdr;
+      if (typeof signedXDR !== "string" || !signedXDR) {
+        throw new Error(
+          "Wallet returned an unexpected response while signing — signedTxXdr is missing or empty."
+        );
+      }
+
       const signedTx = TransactionBuilder.fromXDR(signedXDR, passphrase);
 
       onPhase?.("submitting");
@@ -483,8 +510,6 @@ async function resolveAsset(
   sourceAddress: string,
   assetCode: string
 ): Promise<Asset> {
-  const { Asset } = await import("@stellar/stellar-sdk");
-
   if (assetCode === "XLM") {
     return Asset.native();
   }
@@ -559,7 +584,10 @@ export async function bridgeViaContract(
     );
   }
 
-  return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
+  // Forward onPhase so the caller's "Signing..."/"Submitting..." states still
+  // fire on this path; without it the UI sits on "Signing..." until the
+  // transaction resolves.
+  return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network, onPhase);
 }
 
 export function getExplorerUrl(
@@ -601,4 +629,27 @@ export async function getRecommendedFee(network: StellarNetwork): Promise<string
     // so the transaction is still submitted rather than silently blocked.
     return BASE_FEE;
   }
+}
+
+/** Stroops per XLM (1 XLM = 10,000,000 stroops). */
+const STROOPS_PER_XLM = 10_000_000;
+
+/**
+ * Fetch the current estimated network fee and return it as a human-readable
+ * XLM string suitable for display on the review screen (e.g. "~0.0002 XLM").
+ *
+ * Calls {@link getRecommendedFee} which already handles the Horizon
+ * fee-stats fetch and falls back to BASE_FEE on error, so this function
+ * never throws. (#257)
+ *
+ * @param network - "PUBLIC" or "TESTNET"
+ * @returns Fee string in the form "~X.XXXXXXX XLM"
+ */
+export async function getEstimatedFeeXLM(network: StellarNetwork): Promise<string> {
+  const stroops = await getRecommendedFee(network);
+  const xlm = Number(stroops) / STROOPS_PER_XLM;
+  // Show up to 7 decimal places and strip trailing zeros so
+  // "~0.00002 XLM" is shown rather than "~0.0000200 XLM".
+  const formatted = xlm.toFixed(7).replace(/\.?0+$/, "") || "0";
+  return `~${formatted} XLM`;
 }
