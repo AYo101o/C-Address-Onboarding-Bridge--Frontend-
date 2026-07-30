@@ -261,25 +261,26 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">To (C-address)</label>
+                  <label htmlFor="to-address" className="block text-sm font-medium mb-2">To (C-address)</label>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                     <input
-                       type="text"
-                       value={toAddress}
-                       onChange={(e) => setToAddress(e.target.value)}
-                       placeholder="CABC...DEF"
-                       aria-invalid={!validTo && !!toAddress}
-                       aria-describedby={!validTo && toAddress ? "to-address-error" : undefined}
-                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                       disabled={txStatus !== "idle"}
-                     />
-                   </div>
-                   {!validTo && toAddress && (
-                     <p id="to-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">
-                       Invalid C-address (must start with C and be 56 characters)
-                     </p>
-                   )}
+                    <input
+                      id="to-address"
+                      type="text"
+                      value={toAddress}
+                      onChange={(e) => setToAddress(e.target.value)}
+                      placeholder="CABC...DEF"
+                      aria-invalid={!validTo && !!toAddress}
+                      aria-describedby={!validTo && toAddress ? "to-address-error" : undefined}
+                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                      disabled={txStatus !== "idle"}
+                    />
+                  </div>
+                  {!validTo && toAddress && (
+                    <p id="to-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">
+                      Invalid C-address (must start with C and be 56 characters)
+                    </p>
+                  )}
                 </div>
 
                 <div>
