@@ -71,10 +71,22 @@ export default function DashboardPage() {
       }
     };
     fetchData(true);
-    const interval = setInterval(() => fetchData(false), DASHBOARD_POLL_INTERVAL_MS);
+    // Polling in a hidden/background tab burns network and battery for data
+    // nobody is looking at. Skip the tick while hidden, and catch up
+    // immediately the moment the tab becomes visible again instead of waiting
+    // out the rest of the interval.
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchData(false);
+    }, DASHBOARD_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchData(false);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isConnected, address, network, isNetworkSupported]);
 

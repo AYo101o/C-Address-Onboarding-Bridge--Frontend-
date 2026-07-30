@@ -544,6 +544,17 @@ export async function buildAndSubmitPayment(
   network: StellarNetwork,
   onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
+  // Defence in depth: re-validate destination and amount independently of
+  // whatever UI guard called this. A caller that skips or weakens its own
+  // validation must not be able to get an SDK-built, signed, and submitted
+  // transaction out of this function with a malformed destination or amount.
+  if (!isValidStellarAddress(destinationAddress)) {
+    throw new Error("Invalid destination address");
+  }
+  if (!isValidStellarAmount(amount)) {
+    throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
+  }
+
   // Defence in depth: the UI binds the From field to the connected wallet, but
   // a mismatch here would only surface as tx_bad_auth after signing. (#287)
   await assertActiveAccountMatches(sourceAddress);

@@ -207,6 +207,7 @@ export default function OnrampPage() {
                     <input
                        id="onramp-c-address"
                        type="text"
+                       autoComplete="off"
                        value={cAddress}
                        onChange={(e) => setCAddress(e.target.value)}
                        placeholder="CABC...DEF"
