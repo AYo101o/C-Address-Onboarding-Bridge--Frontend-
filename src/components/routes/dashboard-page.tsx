@@ -65,7 +65,7 @@ export default function DashboardPage() {
         setTransactions((prev) => (areTransactionsEqual(prev, txResult) ? prev : txResult));
       } catch (e: unknown) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to fetch data");
+        setError(toSafeErrorMessage(e, "Failed to fetch data. Please try again."));
       } finally {
         if (!cancelled && isInitial) setLoading(false);
       }

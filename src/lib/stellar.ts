@@ -486,6 +486,21 @@ function truncateAddress(address: string): string {
 }
 
 /**
+ * Reduces an unknown thrown value to a message safe to show directly in a
+ * user-facing notification. Failures from Horizon/Soroban RPC and the
+ * Stellar SDK can carry raw response bodies (JSON error payloads, result
+ * XDR) that were never meant to be read by end users — those are logged to
+ * the console for debugging and replaced with `fallback` instead of being
+ * rendered verbatim in an alert banner.
+ */
+export function toSafeErrorMessage(error: unknown, fallback: string): string {
+  console.error(error);
+  if (!(error instanceof Error) || !error.message) return fallback;
+  const looksLikeRawPayload = /[{}]/.test(error.message) || error.message.length > 200;
+  return looksLikeRawPayload ? fallback : error.message;
+}
+
+/**
  * Verifies that Freighter's active account is the account that will source the
  * transaction, *before* anything is built or signed.
  *

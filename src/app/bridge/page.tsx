@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM } from "@/lib/stellar";
@@ -62,21 +62,30 @@ export default function BridgePage() {
 
   // Balance available for the currently-selected asset. XLM lives in `total`;
   // other assets (e.g. USDC) come from the matching entry in `balances`.
-  const availableBalance =
-    activeBalances === null
-      ? null
-      : asset === "XLM"
-        ? activeBalances.total
-        : activeBalances.balances.find((b) => b.asset === asset)?.amount ?? "0";
+  // Only the asset dropdown and the fetched balances should trigger this
+  // lookup — memoized so typing in the address/amount fields on every
+  // keystroke doesn't re-run the `.find()` over the balances list. (#366)
+  const availableBalance = useMemo(
+    () =>
+      activeBalances === null
+        ? null
+        : asset === "XLM"
+          ? activeBalances.total
+          : (activeBalances.balances.find((b) => b.asset === asset)?.amount ?? "0"),
+    [activeBalances, asset]
+  );
 
   // Spendable balance leaves the XLM minimum reserve untouched; the reserve is
   // only held in XLM, so non-XLM assets can be sent down to zero.
-  const spendableBalance =
-    availableBalance === null
-      ? null
-      : asset === "XLM"
-        ? Number(availableBalance) - Number(getAccountMinimumBalance())
-        : Number(availableBalance);
+  const spendableBalance = useMemo(
+    () =>
+      availableBalance === null
+        ? null
+        : asset === "XLM"
+          ? Number(availableBalance) - Number(getAccountMinimumBalance())
+          : Number(availableBalance),
+    [availableBalance, asset]
+  );
 
   const insufficientBalance =
     spendableBalance !== null &&
@@ -157,7 +166,7 @@ export default function BridgePage() {
       setTxStatus("success");
       setStep("confirm");
     } catch (e: unknown) {
-      setTxError(e instanceof Error ? e.message : "Transaction failed");
+      setTxError(toSafeErrorMessage(e, "Transaction failed. Please try again."));
       setTxStatus("error");
     }
   };
