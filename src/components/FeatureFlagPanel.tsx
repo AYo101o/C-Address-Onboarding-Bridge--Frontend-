@@ -20,7 +20,7 @@ import { useFeatureFlags } from "@/contexts/FeatureFlagContext";
  *
  * 3. **Keyboard Controls & Navigation**:
  *    - **Escape Key (`Escape`)**: Pressing `Escape` at any time while the panel is open closes the panel immediately and returns keyboard focus to the toggle button.
- *    - **Tab Navigation (`Tab` / `Shift+Tab`)**: Focus moves sequentially between feature flag toggle switches (`role="switch"`) and reset buttons (`title="Reset to default"`).
+ *    - **Tab Navigation (`Tab` / `Shift+Tab`)**: Focus moves sequentially between feature flag toggle switches (`role="switch"`) and reset buttons (`title="Reset to default"`), and is trapped within the dialog — tabbing past the last focusable element wraps to the first, and shift+tabbing past the first wraps to the last.
  *    - **Focus Restoration**: Closing the panel via mouse click or `Escape` key restores active focus back to the floating trigger button (`toggleButtonRef`).
  *
  * 4. **ARIA Standards**:
@@ -44,6 +44,25 @@ export function FeatureFlagPanel() {
       if (e.key === "Escape") {
         setIsOpen(false);
         toggleButtonRef.current?.focus();
+        return;
+      }
+
+      if (e.key === "Tab") {
+        const panel = panelRef.current;
+        if (!panel) return;
+        const focusable = panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
 
