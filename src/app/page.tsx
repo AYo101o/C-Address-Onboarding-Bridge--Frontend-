@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ArrowRight, Shield, Zap, CreditCard, Building2, Globe, Code } from "lucide-react";
 import { PrefetchLink } from "@/components/prefetch-link";
 
