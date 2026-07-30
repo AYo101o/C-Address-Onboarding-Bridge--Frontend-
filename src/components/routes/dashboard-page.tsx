@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLink, Plus, Loader2, X } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
 import TransactionHistory from "@/components/transaction-history";
+import { AvatarUpload } from "@/components/avatar-upload";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel } from "@/lib/stellar";
 import type { BridgeTransactionData as BridgeTransaction } from "@/lib/stellar";
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<BridgeTransactionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -129,7 +131,12 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div className="card p-5 flex flex-col items-center justify-center">
+          <div className="text-xs text-[var(--text-muted)] mb-3">Profile Avatar</div>
+          <AvatarUpload currentAvatar={avatar} onAvatarChange={setAvatar} />
+        </div>
+
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="w-4 h-4 text-[var(--primary-light)]" />
