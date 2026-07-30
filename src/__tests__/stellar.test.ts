@@ -258,6 +258,19 @@ describe("getAccountBalances cache", () => {
     expect(loadAccount).toHaveBeenCalledTimes(2);
   });
 
+  it("marks 404 account misses as unfunded and retries on the next call", async () => {
+    loadAccount.mockRejectedValueOnce({ response: { status: 404 } });
+
+    const unfunded = await getAccountBalances(G_ADDRESS, "TESTNET");
+    expect(unfunded).toEqual({ total: "0", balances: [], unfunded: true });
+
+    loadAccount.mockResolvedValue(account("25"));
+    const recovered = await getAccountBalances(G_ADDRESS, "TESTNET");
+
+    expect(recovered.total).toBe("25");
+    expect(loadAccount).toHaveBeenCalledTimes(2);
+  });
+
   it("clearAccountBalancesCache forces a refetch", async () => {
     loadAccount.mockResolvedValue(account("100"));
     await getAccountBalances(G_ADDRESS, "TESTNET");
