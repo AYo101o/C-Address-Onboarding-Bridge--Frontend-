@@ -5,6 +5,7 @@ import { Building2, Copy, Check, ExternalLink, Wallet, X, Clock } from "lucide-r
 import { CEX_LIST } from "@/lib/types";
 import { isCAddress } from "@/lib/stellar";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import LiveRegion from "@/components/live-region";
 
 /**
  * CexPage — CEX withdrawal routing to C-addresses.
@@ -33,6 +34,15 @@ export default function CexPage() {
       : null;
 
   const withdrawalUrl = useMemo(() => selectedCex.withdrawalUrl, [selectedCex]);
+
+  // Copy feedback is icon-only (plus a visible "Copy failed" label), so the
+  // outcome has to be announced for it to exist at all for AT users.
+  const copyAnnouncement =
+    copyStatus === "copied"
+      ? "C-address copied to clipboard."
+      : copyStatus === "error"
+        ? "Copy failed. Check clipboard permissions and try again."
+        : "";
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -102,8 +112,12 @@ export default function CexPage() {
                 {addressError}
               </p>
             )}
+            {/* The invalid case is announced via role="alert"; without a
+                matching role here the *positive* result of typing a correct
+                address is silent, so an AT user gets told when they are wrong
+                but never when they are right. */}
             {addressValid && (
-              <p className="mt-2 text-xs text-green-500 flex items-center gap-1">
+              <p role="status" className="mt-2 text-xs text-green-500 flex items-center gap-1">
                 <Check className="w-3 h-3 flex-shrink-0" />
                 Valid C-address
               </p>
@@ -113,6 +127,11 @@ export default function CexPage() {
           {/* Step 3 — Withdrawal details */}
           <div className="card p-6">
             <h3 className="font-semibold mb-4">3. Withdrawal Details for {selectedCex.name}</h3>
+
+            {/* Mounted with the card, not with the copy row below (which comes
+                and goes with addressValid) — a live region inserted at the same
+                moment it gains text can go unannounced. */}
+            <LiveRegion message={copyAnnouncement} />
 
             {/* Bridge deposit address — coming soon (#299) */}
             <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-4 mb-4 flex items-start gap-3">
@@ -141,6 +160,8 @@ export default function CexPage() {
                   <div className="flex flex-col items-center gap-1">
                     <button
                       onClick={() => copyToClipboard(cAddress)}
+                      // Explicit name: title is not a dependable accessible name.
+                      aria-label="Copy C-address"
                       title={
                         copyStatus === "error"
                           ? "Copy failed — check clipboard permissions"

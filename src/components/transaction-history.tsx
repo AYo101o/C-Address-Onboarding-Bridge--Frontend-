@@ -119,8 +119,13 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
         <h3 className="font-semibold">Recent Transactions</h3>
       </div>
       {loading ? (
-        <div className="p-12 flex items-center justify-center">
+        // The spinner is the only loading indicator, and lucide marks its svg
+        // aria-hidden, so this panel was an empty box to a screen reader: no
+        // announcement on entering the loading state and no text to find when
+        // navigating into it. role="status" plus a hidden label fixes both.
+        <div role="status" className="p-12 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
+          <span className="sr-only">Loading recent transactions…</span>
         </div>
       ) : transactions.length === 0 ? (
         <div className="p-12 text-center">

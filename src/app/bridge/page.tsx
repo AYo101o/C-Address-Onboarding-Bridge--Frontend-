@@ -200,12 +200,8 @@ export default function BridgePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
-            <div aria-live="polite" aria-atomic="true" className="sr-only">
-              {politeAnnouncement}
-            </div>
-            <div aria-live="assertive" aria-atomic="true" className="sr-only">
-              {assertiveAnnouncement}
-            </div>
+            <LiveRegion message={politeAnnouncement} />
+            <LiveRegion politeness="assertive" message={assertiveAnnouncement} />
             {step === "form" && (
               <div className="space-y-6">
                 {isConnected && !isNetworkSupported && (
