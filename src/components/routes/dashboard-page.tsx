@@ -5,6 +5,7 @@ import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLin
 import { useWallet } from "@/components/wallet-provider";
 import AvatarUpload from "@/components/avatar-upload";
 import TransactionHistory from "@/components/transaction-history";
+import { AvatarUpload } from "@/components/avatar-upload";
 import LiveRegion from "@/components/live-region";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<BridgeTransactionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -153,6 +155,12 @@ export default function DashboardPage() {
           New Bridge
         </Link>
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div className="card p-5 flex flex-col items-center justify-center">
+          <div className="text-xs text-[var(--text-muted)] mb-3">Profile Avatar</div>
+          <AvatarUpload currentAvatar={avatar} onAvatarChange={setAvatar} />
+        </div>
 
       <div className="card p-5 mb-8">
         <AvatarUpload address={address ?? null} />
