@@ -189,10 +189,11 @@ export default function OnrampPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Destination C-Address</label>
+                  <label htmlFor="onramp-c-address" className="block text-sm font-medium mb-2">Destination C-Address</label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
+                       id="onramp-c-address"
                        type="text"
                        value={cAddress}
                        onChange={(e) => setCAddress(e.target.value)}
@@ -208,10 +209,11 @@ export default function OnrampPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount (USD)</label>
+                  <label htmlFor="onramp-fiat-amount" className="block text-sm font-medium mb-2">Amount (USD)</label>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
+                       id="onramp-fiat-amount"
                        type="text"
                        value={fiatAmount}
                        onChange={(e) => setFiatAmount(e.target.value)}

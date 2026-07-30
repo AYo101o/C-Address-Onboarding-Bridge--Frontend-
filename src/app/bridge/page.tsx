@@ -302,14 +302,20 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount</label>
+                  <label htmlFor="bridge-amount" className="block text-sm font-medium mb-2">Amount</label>
                   <div className="flex gap-3">
                     <div className="relative flex-1">
                       <input
+                        id="bridge-amount"
                         type="text"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="0.00"
+                        aria-invalid={(!validAmount && !!amount) || insufficientBalance}
+                        aria-describedby={
+                          (!validAmount && amount) ? "amount-format-error" :
+                          insufficientBalance ? "amount-balance-error" : undefined
+                        }
                         className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                         disabled={txStatus !== "idle"}
                       />
@@ -327,6 +333,7 @@ export default function BridgePage() {
                     <select
                       value={asset}
                       onChange={(e) => setAsset(e.target.value)}
+                      aria-label="Asset to send"
                       className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                       disabled={txStatus !== "idle"}
                     >
@@ -340,7 +347,7 @@ export default function BridgePage() {
                     </p>
                   )}
                   {insufficientBalance && (
-                    <p className="text-xs text-[var(--error)] mt-1">
+                    <p id="amount-balance-error" className="text-xs text-[var(--error)] mt-1" role="alert">
                       Insufficient balance. Available:{" "}
                       {spendableBalance !== null ? Math.max(spendableBalance, 0).toFixed(2) : "0.00"} {asset}
                       {asset === "XLM" ? " (after minimum reserve)" : ""}
