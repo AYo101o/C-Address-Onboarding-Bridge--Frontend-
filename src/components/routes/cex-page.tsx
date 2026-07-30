@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Building2, Copy, Check, ExternalLink, Wallet, X, Clock } from "lucide-react";
 import { CEX_LIST } from "@/lib/types";
 import { isCAddress } from "@/lib/stellar";
@@ -25,15 +25,22 @@ export default function CexPage() {
   const [cAddress, setCAddress] = useState("");
   const { status: copyStatus, copy: copyToClipboard } = useCopyToClipboard();
 
+  // Debounce address so validation only runs 200 ms after the user stops
+  // typing — avoids re-validating on every keystroke while keeping the
+  // displayed input value instant.
+  const debouncedCAddress = useDebounce(cAddress, 200);
+
   // Validate once the user has typed something.
-  const addressTouched = cAddress.length > 0;
-  const addressValid = addressTouched && isCAddress(cAddress);
+  const addressTouched = debouncedCAddress.length > 0;
+  const addressValid = addressTouched && isCAddress(debouncedCAddress);
   const addressError =
     addressTouched && !addressValid
       ? "Invalid C-address — must be a valid Soroban contract address (starts with C)."
       : null;
 
-  const withdrawalUrl = useMemo(() => selectedCex.withdrawalUrl, [selectedCex]);
+  // Direct property read — the previous useMemo on a single property access
+  // added overhead without any memoization benefit.
+  const withdrawalUrl = selectedCex.withdrawalUrl;
 
   // Copy feedback is icon-only (plus a visible "Copy failed" label), so the
   // outcome has to be announced for it to exist at all for AT users.
