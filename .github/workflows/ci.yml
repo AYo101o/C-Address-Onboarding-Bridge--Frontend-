@@ -23,6 +23,12 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+      - name: Coverage report
+        run: npm run test -- --coverage
+        continue-on-error: true
       - run: npm run build
         env:
           ENFORCE_BUDGET: "true"
+          # Use TESTNET so the build is deterministic and never fails due to
+          # a missing mainnet Soroban RPC URL (#339).
+          NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"

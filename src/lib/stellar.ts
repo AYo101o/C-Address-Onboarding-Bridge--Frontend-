@@ -562,6 +562,19 @@ export async function bridgeViaContract(
   return buildAndSubmitPayment(sourceAddress, cAddress, amount, assetCode, network);
 }
 
+/**
+ * Builds a URL to view a transaction, account, or contract on stellar.expert.
+ *
+ * **Security audit (#338):**
+ * - The base URL is always a hardcoded https:// literal for stellar.expert,
+ *   derived only from the `network` parameter (which is a validated type).
+ * - The `id` is concatenated into the path, not a query param, so URL-injection
+ *   via & or # in `id` cannot alter the host or add params. A malicious `id`
+ *   can only produce a 404 on stellar.expert, not an open redirect.
+ * - Callers (e.g. Dashboard) should validate `id` is a legitimate address or
+ *   hash before calling, but the function itself does not allow host/scheme
+ *   changes regardless of the `id` value.
+ */
 export function getExplorerUrl(
   network: StellarNetwork,
   type: "tx" | "account" | "contract",
