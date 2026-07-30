@@ -630,3 +630,26 @@ export async function getRecommendedFee(network: StellarNetwork): Promise<string
     return BASE_FEE;
   }
 }
+
+/** Stroops per XLM (1 XLM = 10,000,000 stroops). */
+const STROOPS_PER_XLM = 10_000_000;
+
+/**
+ * Fetch the current estimated network fee and return it as a human-readable
+ * XLM string suitable for display on the review screen (e.g. "~0.0002 XLM").
+ *
+ * Calls {@link getRecommendedFee} which already handles the Horizon
+ * fee-stats fetch and falls back to BASE_FEE on error, so this function
+ * never throws. (#257)
+ *
+ * @param network - "PUBLIC" or "TESTNET"
+ * @returns Fee string in the form "~X.XXXXXXX XLM"
+ */
+export async function getEstimatedFeeXLM(network: StellarNetwork): Promise<string> {
+  const stroops = await getRecommendedFee(network);
+  const xlm = Number(stroops) / STROOPS_PER_XLM;
+  // Show up to 7 decimal places and strip trailing zeros so
+  // "~0.00002 XLM" is shown rather than "~0.0000200 XLM".
+  const formatted = xlm.toFixed(7).replace(/\.?0+$/, "") || "0";
+  return `~${formatted} XLM`;
+}
