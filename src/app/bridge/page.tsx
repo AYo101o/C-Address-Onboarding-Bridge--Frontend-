@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
+import { useDebounce } from "@/hooks/useDebounce";
 
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
@@ -40,11 +41,19 @@ export default function BridgePage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
   const [sourceBalances, setSourceBalances] = useState<AccountBalances | null>(null);
+  // Fee estimate fetched from Horizon when the user moves to the review step.
+  // Falls back to the static placeholder if the fetch fails. (#257)
+  const FALLBACK_FEE = "~0.00001 XLM";
+  const [estimatedFee, setEstimatedFee] = useState<string>(FALLBACK_FEE);
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
-  const validTo = !toAddress || (isValidStellarAddress(toAddress) && isCAddress(toAddress));
+  // Debounce address/amount validation to avoid running StrKey CRC checks on
+  // every keystroke — validation fires 300 ms after the user stops typing.
+  const debouncedToAddress = useDebounce(toAddress, 300);
+  const debouncedAmount = useDebounce(amount, 300);
+  const validTo = !debouncedToAddress || (isValidStellarAddress(debouncedToAddress) && isCAddress(debouncedToAddress));
   const networkLabel = formatNetworkLabel(networkStatus, walletNetworkName);
-  const validAmount = !amount || isValidStellarAmount(amount);
+  const validAmount = !debouncedAmount || isValidStellarAmount(debouncedAmount);
 
   // Balances are only meaningful for a connected wallet on a supported
   // network; anything cached from before a disconnect or a switch to an
@@ -77,7 +86,7 @@ export default function BridgePage() {
 
   // No Soroban transfer path is implemented yet, so no destination this form
   // accepts (validTo requires a C-address) can actually be bridged. See #284.
-  const bridgingBlocked = Boolean(toAddress) && validTo;
+  const bridgingBlocked = Boolean(debouncedToAddress) && validTo;
 
   const canProceed =
     isConnected &&
@@ -89,6 +98,8 @@ export default function BridgePage() {
     validTo &&
     !insufficientBalance &&
     !bridgingBlocked &&
+    debouncedToAddress === toAddress &&
+    debouncedAmount === amount &&
     txStatus === "idle";
 
   // Balances follow the connected account: no manual "use connected wallet"
@@ -109,6 +120,13 @@ export default function BridgePage() {
     if (!canProceed) return;
     setStep("review");
     setTxError(null);
+    // Fetch a fresh fee estimate in the background; if it fails the
+    // fallback value already set in state is shown instead. (#257)
+    getEstimatedFeeXLM(network).then((fee) => setEstimatedFee(fee)).catch(() => {
+      // getEstimatedFeeXLM never throws (it falls back internally), but
+      // guard here for defence in depth.
+      setEstimatedFee(FALLBACK_FEE);
+    });
   };
 
   const handleConfirm = async () => {
@@ -182,12 +200,8 @@ export default function BridgePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
-            <div aria-live="polite" aria-atomic="true" className="sr-only">
-              {politeAnnouncement}
-            </div>
-            <div aria-live="assertive" aria-atomic="true" className="sr-only">
-              {assertiveAnnouncement}
-            </div>
+            <LiveRegion message={politeAnnouncement} />
+            <LiveRegion politeness="assertive" message={assertiveAnnouncement} />
             {step === "form" && (
               <div className="space-y-6">
                 {isConnected && !isNetworkSupported && (
@@ -264,35 +278,40 @@ export default function BridgePage() {
                   <label htmlFor="to-address" className="block text-sm font-medium mb-2">To (C-address)</label>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                     <input
-                       id="to-address"
-                       type="text"
-                       autoComplete="off"
-                       value={toAddress}
-                       onChange={(e) => setToAddress(e.target.value)}
-                       placeholder="CABC...DEF"
-                       aria-invalid={!validTo && !!toAddress}
-                       aria-describedby={!validTo && toAddress ? "to-address-error" : undefined}
-                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                       disabled={txStatus !== "idle"}
-                     />
-                   </div>
-                   {!validTo && toAddress && (
-                     <p id="to-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">
-                       Invalid C-address (must start with C and be 56 characters)
-                     </p>
-                   )}
+                    <input
+                      id="to-address"
+                      type="text"
+                      value={toAddress}
+                      onChange={(e) => setToAddress(e.target.value)}
+                      placeholder="CABC...DEF"
+                      aria-invalid={!validTo && !!toAddress}
+                      aria-describedby={!validTo && toAddress ? "to-address-error" : undefined}
+                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                      disabled={txStatus !== "idle"}
+                    />
+                  </div>
+                  {!validTo && toAddress && (
+                    <p id="to-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">
+                      Invalid C-address (must start with C and be 56 characters)
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount</label>
+                  <label htmlFor="bridge-amount" className="block text-sm font-medium mb-2">Amount</label>
                   <div className="flex gap-3">
                     <div className="relative flex-1">
                       <input
+                        id="bridge-amount"
                         type="text"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="0.00"
+                        aria-invalid={(!validAmount && !!amount) || insufficientBalance}
+                        aria-describedby={
+                          (!validAmount && amount) ? "amount-format-error" :
+                          insufficientBalance ? "amount-balance-error" : undefined
+                        }
                         className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                         disabled={txStatus !== "idle"}
                       />
@@ -310,6 +329,7 @@ export default function BridgePage() {
                     <select
                       value={asset}
                       onChange={(e) => setAsset(e.target.value)}
+                      aria-label="Asset to send"
                       className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                       disabled={txStatus !== "idle"}
                     >
@@ -317,13 +337,13 @@ export default function BridgePage() {
                       <option>USDC</option>
                     </select>
                   </div>
-                  {!validAmount && amount && (
+                  {!validAmount && debouncedAmount && (
                     <p className="text-xs text-[var(--error)] mt-1">
                       Invalid amount. Enter a positive number with up to 7 decimal places (e.g. &quot;10&quot; or &quot;0.5&quot;).
                     </p>
                   )}
                   {insufficientBalance && (
-                    <p className="text-xs text-[var(--error)] mt-1">
+                    <p id="amount-balance-error" className="text-xs text-[var(--error)] mt-1" role="alert">
                       Insufficient balance. Available:{" "}
                       {spendableBalance !== null ? Math.max(spendableBalance, 0).toFixed(2) : "0.00"} {asset}
                       {asset === "XLM" ? " (after minimum reserve)" : ""}
@@ -372,7 +392,7 @@ export default function BridgePage() {
                   </div>
                   <div className="flex justify-between items-center p-4 rounded-lg bg-[var(--surface-2)]">
                     <span className="text-sm text-[var(--text-muted)]">Fee</span>
-                    <span className="text-sm">~0.00001 XLM</span>
+                    <span className="text-sm">{estimatedFee}</span>
                   </div>
                 </div>
 

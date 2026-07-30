@@ -1,8 +1,9 @@
 import React, { memo, useMemo } from "react";
-import { ArrowLeftRight, CreditCard, Building2, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeftRight, CreditCard, Building2, ExternalLink, Loader2, Copy, Check, X } from "lucide-react";
 import type { BridgeTransactionData } from "@/lib/types";
 import { getExplorerUrl } from "@/lib/stellar";
 import type { StellarNetwork } from "@/lib/types";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 const typeConfig: Record<string, { icon: typeof ArrowLeftRight; label: string; color: string }> = {
   "g-to-c": { icon: ArrowLeftRight, label: "G → C Bridge", color: "text-[var(--primary-light)]" },
@@ -29,6 +30,10 @@ const TransactionItem = memo(function TransactionItem({ tx, network }: { tx: Bri
   const status = statusConfig[tx.status];
   const Icon = type.icon;
 
+  // Each transaction item manages its own copy state so rows are independent —
+  // copying one hash does not affect the feedback state of any other row.
+  const { status: copyStatus, copy: copyHash } = useCopyToClipboard();
+
   const date = useMemo(() => new Date(tx.timestamp).toLocaleDateString(), [tx.timestamp]);
   const toShort = useMemo(() => {
     if (!tx.toAddress) return "";
@@ -53,15 +58,48 @@ const TransactionItem = memo(function TransactionItem({ tx, network }: { tx: Bri
           <p className={`text-xs font-medium ${status.color}`}>{status.label}</p>
           <p className="text-xs text-[var(--text-muted)]">{date}</p>
           {tx.hash && (
-            <a
-              href={getExplorerUrl(network, "tx", tx.hash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-[var(--primary-light)] hover:underline inline-flex items-center gap-0.5"
-            >
-              <ExternalLink className="w-3 h-3" />
-              View
-            </a>
+            <div className="flex items-center justify-end gap-1 mt-0.5">
+              {/* Copy the raw transaction hash so users can reference it
+                  without opening Stellar Expert — follows the same
+                  copy/feedback pattern used on the Dashboard and CEX pages.
+                  (#256) */}
+              <button
+                type="button"
+                onClick={() => copyHash(tx.hash!)}
+                title={
+                  copyStatus === "error"
+                    ? "Copy failed — check clipboard permissions"
+                    : copyStatus === "copied"
+                      ? "Copied!"
+                      : "Copy transaction hash"
+                }
+                aria-label={
+                  copyStatus === "copied"
+                    ? "Transaction hash copied"
+                    : copyStatus === "error"
+                      ? "Failed to copy transaction hash"
+                      : "Copy transaction hash"
+                }
+                className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors"
+              >
+                {copyStatus === "copied" ? (
+                  <Check className="w-3 h-3 text-[var(--success)]" />
+                ) : copyStatus === "error" ? (
+                  <X className="w-3 h-3 text-[var(--error,#ef4444)]" />
+                ) : (
+                  <Copy className="w-3 h-3 text-[var(--text-muted)]" />
+                )}
+              </button>
+              <a
+                href={getExplorerUrl(network, "tx", tx.hash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[var(--primary-light)] hover:underline inline-flex items-center gap-0.5"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View
+              </a>
+            </div>
           )}
         </div>
       </div>
@@ -81,8 +119,13 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
         <h3 className="font-semibold">Recent Transactions</h3>
       </div>
       {loading ? (
-        <div className="p-12 flex items-center justify-center">
+        // The spinner is the only loading indicator, and lucide marks its svg
+        // aria-hidden, so this panel was an empty box to a screen reader: no
+        // announcement on entering the loading state and no text to find when
+        // navigating into it. role="status" plus a hidden label fixes both.
+        <div role="status" className="p-12 flex items-center justify-center">
           <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-[var(--text-muted)]" />
+          <span className="sr-only">Loading recent transactions…</span>
         </div>
       ) : transactions.length === 0 ? (
         <div className="p-12 text-center">
