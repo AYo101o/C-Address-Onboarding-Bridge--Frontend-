@@ -7,22 +7,24 @@ on:
     branches: [main]
 
 jobs:
-  frontend:
-    name: Frontend build
+  lint-test-build:
+    name: Lint, Test & Build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+      - name: Coverage report
+        run: npm run test -- --coverage
+        continue-on-error: true
       - run: npm run build
         env:
           ENFORCE_BUDGET: "true"
