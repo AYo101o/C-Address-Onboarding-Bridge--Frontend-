@@ -6,6 +6,7 @@ import { FeatureFlagProvider } from "@/contexts/FeatureFlagContext";
 import { FeatureFlagPanel } from "@/components/FeatureFlagPanel";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Footer />
             </div>
             <FeatureFlagPanel />
+            <ServiceWorkerRegistrar />
           </WalletProvider>
         </FeatureFlagProvider>
       </body>
