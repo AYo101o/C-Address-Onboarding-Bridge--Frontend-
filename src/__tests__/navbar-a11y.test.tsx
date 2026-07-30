@@ -27,8 +27,20 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Mock wallet provider
-const mockUseWallet = vi.fn(() => ({
+// Mock wallet provider.
+//
+// The return type is declared rather than inferred from the default value: with
+// inference, `address: null` narrows the field to `null` and any later
+// `mockReturnValue` carrying a real address fails to typecheck.
+type MockWallet = {
+  isConnected: boolean;
+  address: string | null;
+  connect: () => void;
+  isConnecting: boolean;
+  [key: string]: unknown;
+};
+
+const mockUseWallet = vi.fn<() => MockWallet>(() => ({
   isConnected: false,
   address: null,
   connect: vi.fn(),

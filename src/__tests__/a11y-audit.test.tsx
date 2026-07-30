@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createRoot, Root } from "react-dom/client";
 import Footer from "@/components/footer";
 import TransactionHistory from "@/components/transaction-history";
@@ -19,6 +19,18 @@ import { accessibleName, auditAccessibility, summarizeViolations } from "./helpe
  */
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// `<Footer>` renders `PrefetchLink`, which calls `useRouter()` and throws
+// "invariant expected app router to be mounted" outside a Next app tree.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({
+    push: vi.fn(),
+    prefetch: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+  }),
+}));
 
 function fixture(html: string): HTMLElement {
   const host = document.createElement("div");

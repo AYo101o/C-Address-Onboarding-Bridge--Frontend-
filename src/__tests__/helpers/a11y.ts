@@ -112,6 +112,12 @@ function checkFormLabels(root: ParentNode): A11yViolation[] {
       const id = field.getAttribute("id");
       if (id && labelledIds.has(id)) return false;
       if (field.closest("label")) return false;
+      // A field that is hidden from AT *and* out of the tab order is never
+      // reached by the users this rule protects — it is a proxy the visible
+      // control drives, like the file input behind an "Upload" button. Both
+      // attributes are required: aria-hidden alone would still leave it
+      // tabbable, and tabindex="-1" alone would still leave it announced.
+      if (isHiddenProxyField(field)) return false;
       return true;
     })
     .map((field) => ({
@@ -134,9 +140,23 @@ function checkNoPositiveTabIndex(root: ParentNode): A11yViolation[] {
     }));
 }
 
+/**
+ * True for a form control that is both hidden from assistive tech and removed
+ * from the tab order — the "hidden proxy" pattern, where a visible button is the
+ * real control and this element only exists for the browser to drive (a file
+ * input behind an Upload button, for example). Neither the label rule nor the
+ * aria-hidden-focusable rule applies to it: no user can reach it directly.
+ */
+function isHiddenProxyField(el: Element): boolean {
+  return el.getAttribute("aria-hidden") === "true" && el.getAttribute("tabindex") === "-1";
+}
+
 /** WCAG 4.1.2 — a focusable element hidden from AT is a keyboard trap for screen reader users. */
 function checkAriaHiddenFocusable(root: ParentNode): A11yViolation[] {
   return Array.from(root.querySelectorAll('[aria-hidden="true"]'))
+    // Exempt only a leaf hidden proxy. A hidden *container* that wraps focusable
+    // content is still a trap, so it keeps being reported.
+    .filter((el) => !(isHiddenProxyField(el) && !el.querySelector(FOCUSABLE_SELECTOR)))
     .filter((el) => el.matches(FOCUSABLE_SELECTOR) || el.querySelector(FOCUSABLE_SELECTOR))
     .map((el) => ({
       rule: "aria-hidden-focusable",

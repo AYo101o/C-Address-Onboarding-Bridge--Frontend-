@@ -32,6 +32,10 @@ function collect(dir: string, acc: SourceFile[] = []): SourceFile[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      // Colocated suites (src/lib/__tests__, src/components/__tests__) live
+      // inside the scanned dirs. They have to be skipped here or the audit
+      // rules match the very patterns the tests write down as counterexamples.
+      if (entry.name === "__tests__") continue;
       collect(full, acc);
     } else if (/\.(ts|tsx)$/.test(entry.name)) {
       acc.push({ path: path.relative(repoRoot, full), contents: readFileSync(full, "utf8") });

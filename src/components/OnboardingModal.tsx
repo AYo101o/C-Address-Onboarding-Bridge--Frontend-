@@ -34,8 +34,12 @@ export function OnboardingModal({
 }: OnboardingModalProps) {
   const [currentStep, setCurrentStep] = useState(initialStep);
 
-  // Reset step when modal opens
+  // Reset step when modal opens. The synchronous setState is the point: the
+  // modal stays mounted between openings, so `isOpen` flipping true is the only
+  // signal that the walkthrough should start over from `initialStep`. It runs
+  // once per open, not on every render.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) setCurrentStep(initialStep);
   }, [isOpen, initialStep]);
 

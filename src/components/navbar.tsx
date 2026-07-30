@@ -12,7 +12,7 @@
 import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, Menu, X, AlertTriangle, LogOut } from "lucide-react";
+import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, UserRound, Menu, X, AlertTriangle, LogOut } from "lucide-react";
 import { useWallet } from "./wallet-provider";
 import { PrefetchLink } from "./prefetch-link";
 import { formatNetworkLabel } from "@/lib/stellar";
@@ -22,6 +22,7 @@ const navLinks = [
   { href: "/onramp", label: "Onramp", icon: CreditCard },
   { href: "/cex", label: "CEX", icon: Building2 },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/profile", label: "Profile", icon: UserRound },
 ];
 
 interface NetworkBadgeProps {
