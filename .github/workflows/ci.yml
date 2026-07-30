@@ -7,19 +7,18 @@ on:
     branches: [main]
 
 jobs:
-  frontend:
-    name: Frontend build
+  lint-test-build:
+    name: Lint, Test & Build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
@@ -29,6 +28,3 @@ jobs:
       - run: npm run build
         env:
           ENFORCE_BUDGET: "true"
-          # Use TESTNET so the build is deterministic and never fails due to
-          # a missing mainnet Soroban RPC URL (#339).
-          NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"

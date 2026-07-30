@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
+import { useDebounce } from "@/hooks/useDebounce";
 
 const MOONPAY_API_KEY = process.env.NEXT_PUBLIC_MOONPAY_API_KEY || "";
 const TRANSAK_API_KEY = process.env.NEXT_PUBLIC_TRANSAK_API_KEY || "";
@@ -100,9 +101,14 @@ export default function OnrampPage() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   const provider = providers.find((p) => p.id === selectedProvider);
-  const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
-  const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
-  const canProceed = cAddress && fiatAmount && validAddress && validAmount;
+  // Debounce address and amount validation to avoid running expensive
+  // StrKey checks on every keystroke — validation fires 300 ms after the
+  // user stops typing instead of on every character change.
+  const debouncedCAddress = useDebounce(cAddress, 300);
+  const debouncedFiatAmount = useDebounce(fiatAmount, 300);
+  const validAddress = !debouncedCAddress || (isValidStellarAddress(debouncedCAddress) && isCAddress(debouncedCAddress));
+  const validAmount = !debouncedFiatAmount || /^\d+(\.\d{1,2})?$/.test(debouncedFiatAmount);
+  const canProceed = cAddress && fiatAmount && validAddress && validAmount && debouncedCAddress === cAddress && debouncedFiatAmount === fiatAmount;
 
   const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
     Number(fiatAmount) || 0,
@@ -149,14 +155,30 @@ export default function OnrampPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
+            {/* Pressing Continue swaps the whole form for the redirect panel and
+                opens a new tab. Focus stays where it was, so an AT user gets no
+                signal that either happened — the region announces the outcome.
+                Mounted outside the step branches so it is already registered
+                when the step flips. */}
+            <LiveRegion
+              message={
+                step === "redirect"
+                  ? `Opened a new tab to complete your purchase with ${provider?.name ?? "the provider"}.`
+                  : ""
+              }
+            />
             {step === "form" && (
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium mb-3">Select Provider</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Single column on phones: at ~320px two provider cards left the
+                      name, description and fee/limit rows overlapping their own
+                      borders. (#341) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {providers.map((p) => (
                       <button
                         key={p.id}
+                        type="button"
                         onClick={() => { setSelectedProvider(p.id); setError(null); }}
                         aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
@@ -165,16 +187,18 @@ export default function OnrampPage() {
                             : "border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)]"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold">{p.name}</span>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="font-semibold truncate">{p.name}</span>
                           {selectedProvider === p.id && (
-                            <Check className="w-4 h-4 text-[var(--primary)]" />
+                            <Check className="w-4 h-4 shrink-0 text-[var(--primary)]" />
                           )}
                         </div>
                         <p className="text-xs text-[var(--text-muted)] mb-1">{p.description}</p>
-                        <div className="flex gap-2 text-xs text-[var(--text-muted)]">
+                        {/* Wrap instead of overflowing: "$15 - $25,000" does not fit
+                            beside the fee on a narrow card. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
                           <span>Fee: {p.fee}</span>
-                          <span>•</span>
+                          <span aria-hidden="true">•</span>
                           <span>{p.limits}</span>
                         </div>
                       </button>
@@ -183,11 +207,13 @@ export default function OnrampPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Destination C-Address</label>
+                  <label htmlFor="onramp-c-address" className="block text-sm font-medium mb-2">Destination C-Address</label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
+                       id="onramp-c-address"
                        type="text"
+                       autoComplete="off"
                        value={cAddress}
                        onChange={(e) => setCAddress(e.target.value)}
                        placeholder="CABC...DEF"
@@ -196,16 +222,17 @@ export default function OnrampPage() {
                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
                      />
                    </div>
-                   {!validAddress && cAddress && (
+                   {!validAddress && debouncedCAddress && (
                      <p id="c-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid C-address (must start with C, 56 characters)</p>
                    )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount (USD)</label>
+                  <label htmlFor="onramp-fiat-amount" className="block text-sm font-medium mb-2">Amount (USD)</label>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
+                       id="onramp-fiat-amount"
                        type="text"
                        value={fiatAmount}
                        onChange={(e) => setFiatAmount(e.target.value)}
@@ -215,26 +242,30 @@ export default function OnrampPage() {
                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
                      />
                    </div>
-                   {!validAmount && fiatAmount && (
+                   {!validAmount && debouncedFiatAmount && (
                      <p id="fiat-amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
                    )}
                 </div>
 
+                {/* Every row is label + value with the label pinned and the value
+                    allowed to shrink/wrap. Previously a long amount (the field is
+                    free text) grew the row past the card edge because flex items
+                    do not shrink below their content width by default. (#341) */}
                 <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
                   <h4 className="text-sm font-medium mb-2">Estimated Output</h4>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-muted)]">You pay</span>
-                    <span>${fiatAmount || "0"} USD</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm">
+                    <span className="shrink-0 text-[var(--text-muted)]">You pay</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">${fiatAmount || "0"} USD</span>
                   </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
-                    <span>
-                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
+                  <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
+                    <span className="shrink-0 text-[var(--text-muted)]">Fee ({provider?.fee})</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">
+                      -${fiatAmount && validAmount ? feeAmount.toFixed(2) : "0"}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-[var(--text-muted)]">Est. receive</span>
-                    <span className="font-semibold">
+                  <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
+                    <span className="shrink-0 text-[var(--text-muted)]">Est. receive</span>
+                    <span className="min-w-0 text-right break-all tabular-nums font-semibold">
                       {fiatAmount && validAmount
                         ? `~${receiveAmount.toFixed(2)} USDC`
                         : "—"}
@@ -242,20 +273,29 @@ export default function OnrampPage() {
                   </div>
                 </div>
 
+                {/* Raised by the Continue click (missing API key, or a failure
+                    while building the redirect URL) and rendered below the
+                    button the user just pressed, so nothing about it is
+                    self-evident to AT: role="alert" is what makes the failure
+                    reach the user who cannot see it. */}
                 {error && (
-                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                  <div
+                    role="alert"
+                    className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3"
+                  >
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-[var(--error)]">{error}</p>
                   </div>
                 )}
 
                 <button
+                  type="button"
                   onClick={handleProviderRedirect}
                   disabled={!canProceed}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CreditCard className="w-4 h-4" />
-                  Continue with {provider?.name}
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Continue with {provider?.name}</span>
                 </button>
               </div>
             )}
@@ -274,14 +314,15 @@ export default function OnrampPage() {
                     href={redirectUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
+                    className="inline-flex items-start gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Checkout didn&apos;t open? Continue to {provider?.name}
+                    <ExternalLink className="w-3 h-3 shrink-0 mt-1" />
+                    <span>Checkout didn&apos;t open? Continue to {provider?.name}</span>
                   </a>
                 )}
                 <div className="mt-4">
                   <button
+                    type="button"
                     onClick={() => { setStep("form"); setRedirectUrl(null); }}
                     className="text-sm text-[var(--primary-light)] hover:underline"
                   >
@@ -299,9 +340,9 @@ export default function OnrampPage() {
             <div className="space-y-3">
               {providers.map((p) => (
                 <div key={p.id} className="p-3 rounded-lg bg-[var(--surface-2)]">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm">{p.name}</span>
-                    {selectedProvider === p.id && <Check className="w-4 h-4 text-[var(--primary)]" />}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-medium text-sm truncate">{p.name}</span>
+                    {selectedProvider === p.id && <Check className="w-4 h-4 shrink-0 text-[var(--primary)]" />}
                   </div>
                   <p className="text-xs text-[var(--text-muted)]">{p.description}</p>
                 </div>

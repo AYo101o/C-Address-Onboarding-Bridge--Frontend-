@@ -24,6 +24,23 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 ];
 
+interface NetworkBadgeProps {
+  label: string;
+  className: string;
+  title: string;
+}
+
+// Shared by the desktop and mobile wallet-status displays so the badge
+// markup only needs to be kept in sync with `networkBadge` in one place.
+const NetworkBadge = ({ label, className, title }: NetworkBadgeProps) => (
+  <span
+    className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${className}`}
+    title={title}
+  >
+    {label}
+  </span>
+);
+
 const Navbar = () => {
   const pathname = usePathname();
   const {
@@ -149,12 +166,7 @@ const Navbar = () => {
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
                 <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                 <span className="text-xs font-mono text-[var(--text-muted)]">{addressDisplay}</span>
-                <span
-                  className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${networkBadge.className}`}
-                  title={networkBadge.title}
-                >
-                  {networkBadge.label}
-                </span>
+                <NetworkBadge {...networkBadge} />
                 <button
                   onClick={handleDisconnect}
                   aria-label="Disconnect wallet"
@@ -278,12 +290,7 @@ const Navbar = () => {
                 <div className="flex items-center gap-2 px-3">
                   <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                   <span className="text-xs font-mono text-[var(--text-muted)]">{addressDisplay}</span>
-                  <span
-                    className={`text-[0.6rem] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide ${networkBadge.className}`}
-                    title={networkBadge.title}
-                  >
-                    {networkBadge.label}
-                  </span>
+                  <NetworkBadge {...networkBadge} />
                 </div>
                 <button
                   onClick={handleMobileDisconnect}

@@ -1,16 +1,12 @@
 import { useState, useEffect } from "react";
 
 /**
- * Delays updating the returned value until the input has stopped changing
- * for `delay` milliseconds. Useful for deferring expensive validation on
- * fast-changing inputs (e.g. address fields) without blocking the visible
- * input value.
- *
- * @param value - The value to debounce
- * @param delay - Debounce delay in milliseconds (default 200)
- * @returns The debounced value
+ * Debounces a value by the given delay (ms).
+ * The returned value only updates once the input value has been stable for
+ * `delay` milliseconds, reducing how often downstream validation runs on
+ * rapidly-typed input.
  */
-export function useDebounce<T>(value: T, delay: number = 200): T {
+export function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
   useEffect(() => {
