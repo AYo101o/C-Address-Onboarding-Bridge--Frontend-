@@ -19,7 +19,22 @@
  */
 
 "use client";
-romise<boolean>;
+
+import { useState, useCallback, useRef } from "react";
+
+export type CopyStatus = "idle" | "copied" | "error";
+
+/** How long to show "copied" or "error" feedback before reverting to "idle". */
+const COPY_FEEDBACK_DURATION_MS = 2000;
+
+export interface UseCopyToClipboardReturn {
+  /** Current state of the last copy attempt. */
+  status: CopyStatus;
+  /**
+   * Attempt to write `text` to the clipboard.
+   * Resolves to `true` on success, `false` on failure.
+   */
+  copy: (text: string) => Promise<boolean>;
   /** Manually reset the status back to "idle". */
   reset: () => void;
 }

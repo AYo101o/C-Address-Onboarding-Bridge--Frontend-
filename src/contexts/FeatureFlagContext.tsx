@@ -11,6 +11,25 @@ interface FeatureFlagContextValue {
   flags: typeof FEATURE_FLAGS;
 }
 
+const FeatureFlagContext = createContext<FeatureFlagContextValue | null>(null);
+
+export function FeatureFlagProvider({ children }: { children: ReactNode }) {
+  const [devOverrides, setDevOverrides] = useState<Record<string, boolean>>(
+    typeof window !== 'undefined' ? getDevOverrides() : {}
+  );
+
+  const isEnabled = (key: string) => isFeatureEnabled(key);
+
+  const setOverride = (key: string, enabled: boolean) => {
+    setDevOverride(key, enabled);
+    setDevOverrides(getDevOverrides());
+  };
+
+  const clearOverride = (key: string) => {
+    clearDevOverride(key);
+    setDevOverrides(getDevOverrides());
+  };
+
   return (
     <FeatureFlagContext.Provider 
       value={{ 
