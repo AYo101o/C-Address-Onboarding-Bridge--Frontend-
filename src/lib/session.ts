@@ -21,26 +21,6 @@ export const SESSION_STORAGE_KEY = "wallet:session";
 /** How long a stored session record stays authoritative: 12 hours. */
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
-export interface WalletSession {
-  /** Address recorded at the last explicit connect, if any. */
-  address: string | null;
-  /** True when the user explicitly disconnected and has not reconnected. */
-  manuallyDisconnected: boolean;
-  /** Epoch ms this record was last written. */
-  updatedAt: number;
-}
-
-function freshSession(now: number): WalletSession {
-  return { address: null, manuallyDisconnected: false, updatedAt: now };
-}
-
-function storage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    // Access itself throws in some privacy modes.
-    return null;
   }
 }
 

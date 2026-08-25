@@ -6,106 +6,14 @@ import {
 } from "@stellar/freighter-api";
 import {
   TransactionBuilder,
-  Operation,
-  BASE_FEE,
-  Networks,
-  Asset,
-  Horizon,
-  rpc,
-  Account,
-  StrKey,
-} from "@stellar/stellar-sdk";
-import {
-  BRIDGE_CONTRACT_ID,
-  HORIZON_URL,
-  SOROBAN_RPC_URL,
-  type BridgeTransactionStatus,
-  type StellarNetwork,
-  type WalletNetworkState,
-  type BridgeTransactionData,
-} from "./types";
-import { withSequenceRetry } from "./sequenceManager";
-
-export type { AppNetwork, WalletNetworkState, BridgeTransactionData } from "./types";
-
-/** Seconds a built transaction stays valid before the network rejects it. */
-const TRANSACTION_TIMEOUT_SECONDS = 30;
-
-export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
-  return new Horizon.Server(HORIZON_URL[network]);
-}
-
-export async function getSorobanRpcServer(network: StellarNetwork): Promise<rpc.Server> {
+  Operatiover(network: StellarNetwork): Promise<rpc.Server> {
   const url = SOROBAN_RPC_URL[network];
   if (!url) {
     throw new Error(
-      `No Soroban RPC URL configured for ${network}. Set NEXT_PUBLIC_SOROBAN_RPC_URL_${network} in your environment.`
-    );
-  }
-  return new rpc.Server(url);
-}
-
-export async function getNetworkPassphrase(network: StellarNetwork): Promise<string> {
-  return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
-}
-
-export async function connectWallet(): Promise<string | null> {
-  try {
-    const conn = await isConnected();
-    if (!conn.isConnected) {
-      throw new Error("Freighter not detected");
-    }
-    const addr = await getAddress();
-    return addr.address;
-  } catch (e) {
-    console.error("Failed to connect wallet:", e);
     return null;
   }
 }
-
-export async function checkConnection(): Promise<boolean> {
-  try {
-    const result = await isConnected();
-    return result.isConnected;
-  } catch {
-    return false;
-  }
-}
-
-export async function getWalletAddress(): Promise<string | null> {
-  try {
-    const result = await getAddress();
-    return result.address;
-  } catch {
-    return null;
-  }
-}
-
-export interface WalletNetworkInfo {
-  /** What the app can do with the wallet's current network. */
-  status: WalletNetworkState;
-  /**
-   * The raw, upper-cased network name Freighter reported (e.g. "FUTURENET",
-   * "STANDALONE"). Null when the network could not be read at all. Used to name
-   * the actual network in the "unsupported network" notice.
-   */
-  name: string | null;
-}
-
-/**
- * Reads the wallet's current network *without* collapsing it into the app's
- * two-value union.
- *
- * Freighter can report FUTURENET, STANDALONE or any custom network, and the
- * query itself can fail. Previously all of those became "TESTNET", so a
- * Futurenet user saw a confident "Testnet" label, had balances read off the
- * wrong chain, and got transactions built with the testnet passphrase — with
- * every resulting error pointing away from the real cause. (#289)
- */
-export async function getWalletNetwork(): Promise<WalletNetworkInfo> {
-  try {
-    const result = await getNetwork();
-    // Freighter reports failures in-band via `error` as well as by throwing.
+res in-band via `error` as well as by throwing.
     if (result && typeof result === "object" && "error" in result && result.error) {
       return { status: "UNKNOWN", name: null };
     }

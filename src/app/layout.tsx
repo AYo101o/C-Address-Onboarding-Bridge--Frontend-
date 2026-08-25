@@ -14,25 +14,7 @@ const geist = Geist({
 });
 
 const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-});
-
-export const metadata: Metadata = {
-  title: "C-Address Bridge | Soroban Onboarding Protocol",
-  description:
-    "Fund any Soroban smart account (C-address) directly — from a CEX withdrawal, a credit card, or an existing G-address.",
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en" className={`${geist.variable} ${jetbrainsMono.variable}`}>
-      <body className="antialiased">
-        <FeatureFlagProvider>
-          <WalletProvider>
-            <div className="min-h-screen flex flex-col">
-              <a
-                href="#main-content"
+  subsets: ["l
                 className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-[var(--primary)] focus:text-white focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-light)]"
               >
                 Skip to main content

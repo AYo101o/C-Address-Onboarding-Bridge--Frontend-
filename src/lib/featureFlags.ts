@@ -5,71 +5,13 @@ export interface FeatureFlag {
   defaultEnabled: boolean;
   rolloutPercentage: number; // 0-100
 }
-
-/**
- * Define all feature flags here.
- * Add new features behind flags in this list.
- */
-export const FEATURE_FLAGS: FeatureFlag[] = [
-  {
-    key: 'new_onboarding_flow',
-    name: 'New Onboarding Flow',
-    description: 'Redesigned step-by-step onboarding experience',
-    defaultEnabled: false,
-    rolloutPercentage: 0,
-  },
-  {
-    key: 'advanced_address_validation',
-    name: 'Advanced Address Validation',
-    description: 'Enhanced address validation with real-time feedback',
-    defaultEnabled: false,
-    rolloutPercentage: 0,
-  },
-];
-
-/**
- * Determines if a feature flag is enabled for the current user/session.
- * Priority order:
- * 1. Developer override (localStorage) — highest priority, dev panel only
- * 2. Environment variable override (NEXT_PUBLIC_FEATURE_FLAGS)
- * 3. Rollout percentage (deterministic based on session ID)
- * 4. Default value
- */
-export function isFeatureEnabled(
-  key: string,
-  sessionId?: string,
-): boolean {
   // 1. Dev override from localStorage (only in development)
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     const devOverrides = getDevOverrides();
     if (key in devOverrides) return devOverrides[key];
   }
 
-  // 2. Env var override
-  const envFlags = parseEnvFlags();
-  if (key in envFlags) return envFlags[key];
-
-  // 3. Rollout percentage
-  const flag = FEATURE_FLAGS.find(f => f.key === key);
-  if (!flag) return false;
-
-  // SSR guard: on the server there is no session to hash against, so we fall
-  // back to the flag's defaultEnabled value immediately.  This prevents the
-  // string "server" from being hashed into an arbitrary rollout bucket that
-  // differs from the client's result and causing a hydration mismatch. (#291)
-  if (typeof window === 'undefined') return flag.defaultEnabled;
-
-  if (flag.rolloutPercentage === 100) return true;
-  if (flag.rolloutPercentage === 0) return flag.defaultEnabled;
-
-const hash = deterministicHash(`${key}:${sessionId ?? getSessionId()}`);
-return (hash % 100) < flag.rolloutPercentage;
-}
-
-/**
- * Deterministic hash function for consistent rollout behavior.
- */
-function deterministicHash(str: string): number {
+  // 2. EnvoutPerministicHash(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = ((hash << 5) - hash) + str.charCodeAt(i);

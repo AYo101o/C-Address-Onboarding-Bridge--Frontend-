@@ -86,39 +86,6 @@ export default function BridgePage() {
           ? Number(availableBalance) - Number(getAccountMinimumBalance())
           : Number(availableBalance),
     [availableBalance, asset]
-  );
-
-  const insufficientBalance =
-    spendableBalance !== null &&
-    amount !== "" &&
-    !Number.isNaN(Number(amount)) &&
-    Number(amount) > spendableBalance;
-
-  // No Soroban transfer path is implemented yet, so no destination this form
-  // accepts (validTo requires a C-address) can actually be bridged. See #284.
-  const bridgingBlocked = Boolean(debouncedToAddress) && validTo;
-
-  const canProceed =
-    isConnected &&
-    isNetworkSupported &&
-    fromAddress &&
-    toAddress &&
-    amount &&
-    validFrom &&
-    validTo &&
-    !insufficientBalance &&
-    !bridgingBlocked &&
-    debouncedToAddress === toAddress &&
-    debouncedAmount === amount &&
-    txStatus === "idle";
-
-  // Balances follow the connected account: no manual "use connected wallet"
-  // step, and a network switch re-reads them against the right chain. A slow
-  // response for the previous account/network must not overwrite fresh data.
-  useEffect(() => {
-    if (!address || !isNetworkSupported) return;
-    let cancelled = false;
-    getAccountBalances(address, network).then((result) => {
       if (!cancelled) setSourceBalances(result);
     });
     return () => {
@@ -174,28 +141,7 @@ export default function BridgePage() {
 
   const handleReset = () => {
     setStep("form");
-    setTxStatus("idle");
-    setTxHash(null);
-    setTxError(null);
-  };
-
-  // Announcements for screen readers, derived from the existing status state.
-  // The visible UI copy is unchanged; these strings follow exactly the wording
-  // requested in #224 and the same sense as the visible button/screen copy.
-  // Two permanently-mounted regions avoid the "some AT cache the politeness
-  // value on first registration" pitfall — whichever isn't active is simply
-  // left as the empty string so only one ever has content.
-  const isTxError = txStatus === "error";
-  const politeAnnouncement =
-    txStatus === "signing"
-      ? "Signing transaction."
-      : txStatus === "submitting"
-        ? "Submitting transaction."
-        : txStatus === "success"
-          ? "Transaction submitted successfully."
-          : "";
-  const assertiveAnnouncement = isTxError
-    ? `Transaction failed. ${txError ?? "An unexpected error occurred."}`
+    setTxStatus("idle");xpected error occurred."}`
     : "";
 
   return (
