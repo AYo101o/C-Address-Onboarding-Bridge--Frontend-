@@ -6,6 +6,7 @@ import { useWallet } from "@/components/wallet-provider";
 import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM, toSafeErrorMessage } from "@/lib/stellar";
 import type { AccountBalances } from "@/lib/stellar";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useStepTransition } from "@/hooks/useStepTransition";
 import LiveRegion from "@/components/live-region";
 
 type Step = "form" | "review" | "confirm";
@@ -46,6 +47,10 @@ export default function BridgePage() {
   // Falls back to the static placeholder if the fetch fails. (#257)
   const FALLBACK_FEE = "~0.00001 XLM";
   const [estimatedFee, setEstimatedFee] = useState<string>(FALLBACK_FEE);
+
+  // Keyboard + screen-reader step transitions: focus the new step's heading and
+  // announce the change. Implemented in useStepTransition. (#476)
+  const { headingRef, announcement: stepAnnouncement } = useStepTransition(step);
 
   const validFrom = !fromAddress || isValidStellarAddress(fromAddress);
   // Debounce address/amount validation to avoid running StrKey CRC checks on
@@ -212,8 +217,17 @@ export default function BridgePage() {
           <div className="card p-6">
             <LiveRegion message={politeAnnouncement} />
             <LiveRegion politeness="assertive" message={assertiveAnnouncement} />
+            <LiveRegion message={stepAnnouncement} />
             {step === "form" && (
               <div className="space-y-6">
+                <h2
+                  id="step-form-heading"
+                  ref={headingRef}
+                  tabIndex={-1}
+                  className="text-xl font-semibold mb-4 focus:outline-none"
+                >
+                  Enter Bridge Details
+                </h2>
                 {isConnected && !isNetworkSupported && (
                   <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
@@ -246,7 +260,7 @@ export default function BridgePage() {
                           value={fromAddress}
                           readOnly
                           aria-describedby="from-address-help"
-                          className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono text-[var(--text-muted)] cursor-not-allowed focus:outline-none"
+                          className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono text-[var(--text-muted)] cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
                         />
                       </div>
                       <p id="from-address-help" className="text-xs text-[var(--text-muted)] mt-1">
@@ -296,8 +310,8 @@ export default function BridgePage() {
                       placeholder="CABC...DEF"
                       aria-invalid={!validTo && !!toAddress}
                       aria-describedby={!validTo && toAddress ? "to-address-error" : undefined}
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                      disabled={txStatus !== "idle"}
+                        className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus:border-[var(--primary)] transition-colors"
+                        disabled={txStatus !== "idle"}
                     />
                   </div>
                   {!validTo && toAddress && (
@@ -322,7 +336,7 @@ export default function BridgePage() {
                           (!validAmount && amount) ? "amount-format-error" :
                           insufficientBalance ? "amount-balance-error" : undefined
                         }
-                        className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                        className="w-full px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus:border-[var(--primary)] transition-colors"
                         disabled={txStatus !== "idle"}
                       />
                       {spendableBalance !== null && spendableBalance > 0 && txStatus === "idle" && (
@@ -340,7 +354,7 @@ export default function BridgePage() {
                       value={asset}
                       onChange={(e) => setAsset(e.target.value)}
                       aria-label="Asset to send"
-                      className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                      className="px-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus:border-[var(--primary)] transition-colors"
                       disabled={txStatus !== "idle"}
                     >
                       <option>XLM</option>
@@ -381,7 +395,14 @@ export default function BridgePage() {
 
             {step === "review" && (
               <div className="space-y-6">
-                <h3 className="font-semibold text-lg">Review Transaction</h3>
+                <h2
+                  id="step-review-heading"
+                  ref={headingRef}
+                  tabIndex={-1}
+                  className="font-semibold text-lg focus:outline-none"
+                >
+                  Review Transaction
+                </h2>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-center p-4 rounded-lg bg-[var(--surface-2)]">
@@ -450,7 +471,14 @@ export default function BridgePage() {
                 <div className="w-16 h-16 rounded-full bg-[var(--success)]/10 flex items-center justify-center mx-auto mb-4">
                   <Check className="w-8 h-8 text-[var(--success)]" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Transaction Submitted</h3>
+                <h2
+                  id="step-confirm-heading"
+                  ref={headingRef}
+                  tabIndex={-1}
+                  className="text-lg font-semibold mb-2 focus:outline-none"
+                >
+                  Transaction Submitted
+                </h2>
                 <p className="text-sm text-[var(--text-muted)] mb-4">
                   Your bridge transaction has been submitted to the network.
                 </p>
@@ -481,7 +509,14 @@ export default function BridgePage() {
                 <div className="w-16 h-16 rounded-full bg-[var(--error)]/10 flex items-center justify-center mx-auto mb-4">
                   <AlertCircle className="w-8 h-8 text-[var(--error)]" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Transaction Failed</h3>
+                <h2
+                  id="step-confirm-error-heading"
+                  ref={headingRef}
+                  tabIndex={-1}
+                  className="text-lg font-semibold mb-2 focus:outline-none"
+                >
+                  Transaction Failed
+                </h2>
                 <p className="text-sm text-[var(--text-muted)] mb-6">{txError || "An unexpected error occurred"}</p>
                 <button
                   onClick={() => { setStep("review"); setTxStatus("idle"); setTxError(null); }}
