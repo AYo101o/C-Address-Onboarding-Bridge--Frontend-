@@ -42,10 +42,7 @@ export type AvatarValidation = { ok: true } | { ok: false; error: string };
 
 /** Human-readable size for error messages, e.g. "512 KB" or "1.4 MB". */
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${Math.round(kb)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
+  throw new Error('Not implemented: formatBytes');
 }
 
 /**
@@ -53,32 +50,17 @@ export function formatBytes(bytes: number): string {
  * `File` it needs so it can be unit-tested without a DOM `File`.
  */
 export function validateAvatarFile(file: Pick<File, "type" | "size">): AvatarValidation {
-  if (!(ACCEPTED_AVATAR_TYPES as readonly string[]).includes(file.type)) {
-    return {
-      ok: false,
-      error: "Unsupported file type. Use a PNG, JPEG, WebP or GIF image.",
-    };
-  }
-  if (file.size === 0) {
-    return { ok: false, error: "That file is empty." };
-  }
-  if (file.size > AVATAR_MAX_BYTES) {
-    return {
-      ok: false,
-      error: `Image is ${formatBytes(file.size)} — the limit is ${formatBytes(AVATAR_MAX_BYTES)}.`,
-    };
-  }
-  return { ok: true };
+  throw new Error('Not implemented: validateAvatarFile');
 }
 
 /** True when `value` is a base64 image data URL that is safe to render. */
 export function isRenderableAvatar(value: unknown): value is string {
-  return typeof value === "string" && DATA_URL_PATTERN.test(value);
+  throw new Error('Not implemented: isRenderableAvatar');
 }
 
 /** Storage key for an address. Exported so tests and docs can reference it. */
 export function avatarStorageKey(address: string): string {
-  return `${STORAGE_PREFIX}${address}`;
+  throw new Error('Not implemented: avatarStorageKey');
 }
 
 function storage(): Storage | null {
@@ -93,15 +75,7 @@ function storage(): Storage | null {
 
 /** Reads the stored avatar for `address`, or null when absent/invalid. */
 export function loadAvatar(address: string | null | undefined): string | null {
-  if (!address) return null;
-  const store = storage();
-  if (!store) return null;
-  try {
-    const value = store.getItem(avatarStorageKey(address));
-    return isRenderableAvatar(value) ? value : null;
-  } catch {
-    return null;
-  }
+  throw new Error('Not implemented: loadAvatar');
 }
 
 /**
@@ -110,27 +84,12 @@ export function loadAvatar(address: string | null | undefined): string | null {
  * surface a message instead of silently losing the image.
  */
 export function saveAvatar(address: string | null | undefined, dataUrl: string): boolean {
-  if (!address || !isRenderableAvatar(dataUrl)) return false;
-  const store = storage();
-  if (!store) return false;
-  try {
-    store.setItem(avatarStorageKey(address), dataUrl);
-    return true;
-  } catch {
-    return false;
-  }
+  throw new Error('Not implemented: saveAvatar');
 }
 
 /** Removes the stored avatar for `address`. */
 export function removeAvatar(address: string | null | undefined): void {
-  if (!address) return;
-  const store = storage();
-  if (!store) return;
-  try {
-    store.removeItem(avatarStorageKey(address));
-  } catch {
-    // Nothing useful to do — the avatar simply stays until storage is cleared.
-  }
+  throw new Error('Not implemented: removeAvatar');
 }
 
 /**
@@ -138,6 +97,5 @@ export function removeAvatar(address: string | null | undefined): void {
  * base32 so the leading characters ("GA", "CB", …) are stable and readable.
  */
 export function avatarInitials(address: string | null | undefined): string {
-  if (!address) return "?";
-  return address.slice(0, 2).toUpperCase();
+  throw new Error('Not implemented: avatarInitials');
 }

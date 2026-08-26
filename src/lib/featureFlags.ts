@@ -39,31 +39,7 @@ export function isFeatureEnabled(
   key: string,
   sessionId?: string,
 ): boolean {
-  // 1. Dev override from localStorage (only in development)
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    const devOverrides = getDevOverrides();
-    if (key in devOverrides) return devOverrides[key];
-  }
-
-  // 2. Env var override
-  const envFlags = parseEnvFlags();
-  if (key in envFlags) return envFlags[key];
-
-  // 3. Rollout percentage
-  const flag = FEATURE_FLAGS.find(f => f.key === key);
-  if (!flag) return false;
-
-  // SSR guard: on the server there is no session to hash against, so we fall
-  // back to the flag's defaultEnabled value immediately.  This prevents the
-  // string "server" from being hashed into an arbitrary rollout bucket that
-  // differs from the client's result and causing a hydration mismatch. (#291)
-  if (typeof window === 'undefined') return flag.defaultEnabled;
-
-  if (flag.rolloutPercentage === 100) return true;
-  if (flag.rolloutPercentage === 0) return flag.defaultEnabled;
-
-const hash = deterministicHash(`${key}:${sessionId ?? getSessionId()}`);
-return (hash % 100) < flag.rolloutPercentage;
+  throw new Error('Not implemented: isFeatureEnabled');
 }
 
 /**
@@ -104,27 +80,7 @@ const DEV_OVERRIDES_KEY = 'ff_dev_overrides';
  * shapes into the feature-flag evaluation path. (#240)
  */
 export function getDevOverrides(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(DEV_OVERRIDES_KEY) ?? '{}');
-
-    // Must be a plain, non-null object — not an array, not a primitive.
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return {};
-    }
-
-    // Every value must be a boolean; anything else (number, string, object…)
-    // is treated as a corrupted/unexpected entry and the whole store is reset.
-    const record = parsed as Record<string, unknown>;
-    for (const val of Object.values(record)) {
-      if (typeof val !== 'boolean') return {};
-    }
-
-    return record as Record<string, boolean>;
-  } catch {
-    return {};
-  }
+  throw new Error('Not implemented: getDevOverrides');
 }
 
 /**
@@ -135,12 +91,7 @@ export function getDevOverrides(): Record<string, boolean> {
  * NODE_ENV guard. (#240)
  */
 export function setDevOverride(key: string, enabled: boolean): void {
-  if (process.env.NODE_ENV !== 'development') return;
-  if (typeof window === 'undefined') return;
-
-  const overrides = getDevOverrides();
-  overrides[key] = enabled;
-  localStorage.setItem(DEV_OVERRIDES_KEY, JSON.stringify(overrides));
+  throw new Error('Not implemented: setDevOverride');
 }
 
 /**
@@ -150,12 +101,7 @@ export function setDevOverride(key: string, enabled: boolean): void {
  * of which call site invokes it. (#240)
  */
 export function clearDevOverride(key: string): void {
-  if (process.env.NODE_ENV !== 'development') return;
-  if (typeof window === 'undefined') return;
-
-  const overrides = getDevOverrides();
-  delete overrides[key];
-  localStorage.setItem(DEV_OVERRIDES_KEY, JSON.stringify(overrides));
+  throw new Error('Not implemented: clearDevOverride');
 }
 
 /**

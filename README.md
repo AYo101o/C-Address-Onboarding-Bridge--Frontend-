@@ -2,6 +2,38 @@
 
 The onboarding layer for Soroban dApps. Fund any Soroban smart account (C-address) directly — from a CEX withdrawal, a credit card, or an existing G-address.
 
+---
+
+## 📚 This repository is a learning exercise set
+
+57 functions in `src/lib` and `src/hooks` have had their bodies **intentionally
+replaced with `throw new Error('Not implemented: …')`** so contributors can
+implement them as guided exercises. Signatures, types, doc comments, and the
+test suite are all intact.
+
+**This is deliberate — the app is not broken.** React components are untouched,
+so the UI still renders; the stubbed functions throw when called.
+
+Each stub has a corresponding issue. Pick one from the
+[issue tracker](../../issues), implement that single function, and open a PR.
+
+### Verifying your work
+
+This repository has real test coverage (44 test files), so your exercise has a
+concrete pass condition. Run only the tests for your function:
+
+```bash
+npm test -- -t 'yourFunctionName'
+```
+
+Because many functions are stubbed at once, the full suite will not be green —
+only your own function's tests need to pass.
+
+The original implementations remain in git history if you want to check your
+work after submitting.
+
+---
+
 ## Features
 
 - **G → C Bridge** *(not yet live — see #284)* — Will send XLM or USDC from a Stellar G-address to a Soroban C-address; classic Stellar payments can't target contract addresses, so this requires a Soroban smart-contract transfer step that hasn't shipped. The UI currently blocks this flow with an explanatory message instead of submitting a doomed transaction.

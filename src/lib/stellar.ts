@@ -32,53 +32,27 @@ export type { AppNetwork, WalletNetworkState, BridgeTransactionData } from "./ty
 const TRANSACTION_TIMEOUT_SECONDS = 30;
 
 export async function getHorizonServer(network: StellarNetwork): Promise<Horizon.Server> {
-  return new Horizon.Server(HORIZON_URL[network]);
+  throw new Error('Not implemented: getHorizonServer');
 }
 
 export async function getSorobanRpcServer(network: StellarNetwork): Promise<rpc.Server> {
-  const url = SOROBAN_RPC_URL[network];
-  if (!url) {
-    throw new Error(
-      `No Soroban RPC URL configured for ${network}. Set NEXT_PUBLIC_SOROBAN_RPC_URL_${network} in your environment.`
-    );
-  }
-  return new rpc.Server(url);
+  throw new Error('Not implemented: getSorobanRpcServer');
 }
 
 export async function getNetworkPassphrase(network: StellarNetwork): Promise<string> {
-  return network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET;
+  throw new Error('Not implemented: getNetworkPassphrase');
 }
 
 export async function connectWallet(): Promise<string | null> {
-  try {
-    const conn = await isConnected();
-    if (!conn.isConnected) {
-      throw new Error("Freighter not detected");
-    }
-    const addr = await getAddress();
-    return addr.address;
-  } catch (e) {
-    console.error("Failed to connect wallet:", e);
-    return null;
-  }
+  throw new Error('Not implemented: connectWallet');
 }
 
 export async function checkConnection(): Promise<boolean> {
-  try {
-    const result = await isConnected();
-    return result.isConnected;
-  } catch {
-    return false;
-  }
+  throw new Error('Not implemented: checkConnection');
 }
 
 export async function getWalletAddress(): Promise<string | null> {
-  try {
-    const result = await getAddress();
-    return result.address;
-  } catch {
-    return null;
-  }
+  throw new Error('Not implemented: getWalletAddress');
 }
 
 export interface WalletNetworkInfo {
@@ -103,21 +77,7 @@ export interface WalletNetworkInfo {
  * every resulting error pointing away from the real cause. (#289)
  */
 export async function getWalletNetwork(): Promise<WalletNetworkInfo> {
-  try {
-    const result = await getNetwork();
-    // Freighter reports failures in-band via `error` as well as by throwing.
-    if (result && typeof result === "object" && "error" in result && result.error) {
-      return { status: "UNKNOWN", name: null };
-    }
-    const name = String(result.network ?? "").toUpperCase();
-    if (name === "PUBLIC" || name === "TESTNET") {
-      return { status: name, name };
-    }
-    return { status: "UNSUPPORTED", name: name || null };
-  } catch {
-    // Couldn't query the wallet — do NOT pretend it's testnet.
-    return { status: "UNKNOWN", name: null };
-  }
+  throw new Error('Not implemented: getWalletNetwork');
 }
 
 /**
@@ -126,7 +86,7 @@ export async function getWalletNetwork(): Promise<WalletNetworkInfo> {
  * see {@link WalletNetworkState}. (#289)
  */
 export async function getCurrentNetwork(): Promise<WalletNetworkState> {
-  return (await getWalletNetwork()).status;
+  throw new Error('Not implemented: getCurrentNetwork');
 }
 
 /**
@@ -136,16 +96,7 @@ export function formatNetworkLabel(
   status: WalletNetworkState,
   name?: string | null
 ): string {
-  switch (status) {
-    case "PUBLIC":
-      return "Mainnet";
-    case "TESTNET":
-      return "Testnet";
-    case "UNSUPPORTED":
-      return name ? `${name.charAt(0)}${name.slice(1).toLowerCase()}` : "Unsupported";
-    case "UNKNOWN":
-      return "Unknown";
-  }
+  throw new Error('Not implemented: formatNetworkLabel');
 }
 
 // Validate against the SDK's StrKey, which enforces the correct base32
@@ -153,14 +104,11 @@ export function formatNetworkLabel(
 // hand-rolled regex cannot verify the checksum and, as [G|C] showed, is easy
 // to get subtly wrong (that character class also accepted a leading '|').
 export function isValidStellarAddress(address: string): boolean {
-  return StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address);
+  throw new Error('Not implemented: isValidStellarAddress');
 }
 
 export function isValidStellarAmount(amount: string): boolean {
-  if (!amount || typeof amount !== "string") return false;
-  if (!/^\d+(\.\d{1,7})?$/.test(amount)) return false;
-  const num = Number(amount);
-  return !isNaN(num) && num > 0;
+  throw new Error('Not implemented: isValidStellarAmount');
 }
 
 export function isCAddress(address: string): boolean {
