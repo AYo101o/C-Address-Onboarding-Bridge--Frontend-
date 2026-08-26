@@ -28,6 +28,7 @@ export default function BridgePage() {
     networkStatus,
     walletNetworkName,
     isNetworkSupported,
+    isOnline,
     connect,
   } = useWallet();
   // The source is always Freighter's connected account, never free text.
@@ -106,6 +107,7 @@ export default function BridgePage() {
   const canProceed =
     isConnected &&
     isNetworkSupported &&
+    isOnline &&
     fromAddress &&
     toAddress &&
     amount &&
@@ -228,6 +230,16 @@ export default function BridgePage() {
                 >
                   Enter Bridge Details
                 </h2>
+
+                {!isOnline && (
+                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[var(--text-muted)]">
+                      You&apos;re offline, so the bridge can&apos;t submit right now.
+                      Your details are kept; reconnect to send the transaction.
+                    </p>
+                  </div>
+                )}
                 {isConnected && !isNetworkSupported && (
                   <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
@@ -385,7 +397,9 @@ export default function BridgePage() {
                 <button
                   onClick={handleSubmit}
                   disabled={!canProceed}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-disabled={!canProceed}
+                  title={!isOnline ? "Reconnect to the network to continue" : undefined}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-light)]"
                 >
                   <Send className="w-4 h-4" />
                   Review Bridge Transaction
@@ -447,8 +461,8 @@ export default function BridgePage() {
                   </button>
                   <button
                     onClick={handleConfirm}
-                    disabled={txStatus === "signing" || txStatus === "submitting"}
-                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50"
+                    disabled={txStatus === "signing" || txStatus === "submitting" || !isOnline}
+                    className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-light)]"
                   >
                     {txStatus === "signing" || txStatus === "submitting" ? (
                       <>
