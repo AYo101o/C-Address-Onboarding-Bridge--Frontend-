@@ -112,11 +112,11 @@ export function isValidStellarAmount(amount: string): boolean {
 }
 
 export function isCAddress(address: string): boolean {
-  return StrKey.isValidContract(address);
+  throw new Error('Not implemented: isCAddress');
 }
 
 export function isGAddress(address: string): boolean {
-  return StrKey.isValidEd25519PublicKey(address);
+  throw new Error('Not implemented: isGAddress');
 }
 
 export interface PaymentResult {
@@ -229,33 +229,7 @@ export async function getAccountBalances(
   address: string,
   network: "PUBLIC" | "TESTNET"
 ): Promise<AccountBalances> {
-  // Reject structurally invalid addresses before hitting the network.
-  // An empty or malformed address would produce an opaque Horizon 400/404
-  // that obscures the real cause and could log confusing errors.
-  if (!isValidStellarAddress(address)) {
-    return { total: "0", balances: [] };
-  }
-
-  const key = `${address}:${network}`;
-  const now = Date.now();
-
-  const cached = balanceCache.get(key);
-  if (cached && now - cached.fetchedAt < BALANCE_CACHE_TTL_MS) {
-    return withBalanceFallback(cached.promise);
-  }
-
-  const promise = loadAccountBalances(address, network);
-  balanceCache.set(key, { promise, fetchedAt: now });
-
-  // Evict on failure so the "0 balance" fallback is not served from cache and
-  // the next call retries against the network.
-  promise.catch(() => {
-    if (balanceCache.get(key)?.promise === promise) {
-      balanceCache.delete(key);
-    }
-  });
-
-  return withBalanceFallback(promise);
+  throw new Error('Not implemented: getAccountBalances');
 }
 
 /**
@@ -263,7 +237,7 @@ export async function getAccountBalances(
  * the short TTL rather than manual invalidation.
  */
 export function clearAccountBalancesCache(): void {
-  balanceCache.clear();
+  throw new Error('Not implemented: clearAccountBalancesCache');
 }
 
 export async function fetchRecentTransactions(
@@ -271,55 +245,7 @@ export async function fetchRecentTransactions(
   network: StellarNetwork,
   limit: number = 10
 ): Promise<BridgeTransactionData[]> {
-  // Reject invalid addresses before hitting the network and clamp the
-  // limit to a safe range (1–200) to prevent unexpectedly large requests.
-  if (!isValidStellarAddress(address)) {
-    return [];
-  }
-  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 200);
-  const server = await getHorizonServer(network);
-  try {
-    const payments = await server
-      .payments()
-      .forAccount(address)
-      .limit(safeLimit)
-      .order("desc")
-      .call();
-
-    return (payments.records as HorizonPayment[]).map((p) => {
-      // create_account operations use `funder`/`account` and `starting_balance`
-      // instead of the `from`/`to`/`amount` fields present on payment ops. (#294)
-      const isCreateAccount = p.type === "create_account";
-      const fromAddress = isCreateAccount ? (p.funder || "") : (p.from || "");
-      const toAddress = isCreateAccount ? (p.account || "") : (p.to || "");
-      const amount = isCreateAccount
-        ? (p.starting_balance || "0")
-        : (p.amount || "0");
-
-      // When `transaction_successful` is absent (older Horizon versions) we
-      // treat the record as pending rather than assuming it failed. (#294)
-      let status: BridgeTransactionStatus;
-      if (p.transaction_successful === undefined || p.transaction_successful === null) {
-        status = "pending";
-      } else {
-        status = p.transaction_successful ? "confirmed" : "failed";
-      }
-
-      return {
-        id: p.id,
-        fromAddress,
-        toAddress,
-        amount,
-        asset: p.asset_type === "native" || isCreateAccount ? "XLM" : (p.asset_code || "XLM"),
-        status,
-        timestamp: new Date(p.created_at || Date.now()).getTime(),
-        type: "g-to-c" as const,
-        hash: p.transaction_hash,
-      };
-    });
-  } catch {
-    return [];
-  }
+  throw new Error('Not implemented: fetchRecentTransactions');
 }
 
 /**
@@ -443,10 +369,7 @@ function truncateAddress(address: string): string {
  * rendered verbatim in an alert banner.
  */
 export function toSafeErrorMessage(error: unknown, fallback: string): string {
-  console.error(error);
-  if (!(error instanceof Error) || !error.message) return fallback;
-  const looksLikeRawPayload = /[{}]/.test(error.message) || error.message.length > 200;
-  return looksLikeRawPayload ? fallback : error.message;
+  throw new Error('Not implemented: toSafeErrorMessage');
 }
 
 /**
@@ -460,20 +383,7 @@ export function toSafeErrorMessage(error: unknown, fallback: string): string {
  * addresses and tells the user what to do. (#287)
  */
 export async function assertActiveAccountMatches(sourceAddress: string): Promise<void> {
-  const active = await getWalletAddress();
-
-  if (!active) {
-    throw new Error(
-      "Couldn't read Freighter's active account. Connect (or unlock) Freighter and try again."
-    );
-  }
-
-  if (active !== sourceAddress) {
-    throw new Error(
-      `Freighter's active account (${truncateAddress(active)}) doesn't match the From address (${truncateAddress(sourceAddress)}). ` +
-        "Switch accounts in Freighter or use the connected address."
-    );
-  }
+  throw new Error('Not implemented: assertActiveAccountMatches');
 }
 
 /**
@@ -508,35 +418,7 @@ export async function buildAndSubmitPayment(
   network: StellarNetwork,
   onPhase?: (phase: "signing" | "submitting") => void
 ): Promise<PaymentResult> {
-  // Defence in depth: re-validate destination and amount independently of
-  // whatever UI guard called this. A caller that skips or weakens its own
-  // validation must not be able to get an SDK-built, signed, and submitted
-  // transaction out of this function with a malformed destination or amount.
-  if (!isValidStellarAddress(destinationAddress)) {
-    throw new Error("Invalid destination address");
-  }
-  if (!isValidStellarAmount(amount)) {
-    throw new Error("Invalid amount: Stellar amounts support at most 7 decimal places and must be greater than 0");
-  }
-
-  // Defence in depth: the UI binds the From field to the connected wallet, but
-  // a mismatch here would only surface as tx_bad_auth after signing. (#287)
-  await assertActiveAccountMatches(sourceAddress);
-
-  const server = await getHorizonServer(network);
-  const passphrase = await getNetworkPassphrase(network);
-  const asset = await resolveAsset(server, sourceAddress, assetCode);
-
-  return buildSignAndSubmit(
-    sourceAddress,
-    destinationAddress,
-    asset,
-    amount,
-    network,
-    server,
-    passphrase,
-    onPhase
-  );
+  throw new Error('Not implemented: buildAndSubmitPayment');
 }
 
 /**
@@ -596,17 +478,11 @@ export function getExplorerUrl(
   type: "tx" | "account" | "contract",
   id: string
 ): string {
-  const base = network === "PUBLIC"
-    ? "https://stellar.expert/explorer/public"
-    : "https://stellar.expert/explorer/testnet";
-  // Encode the id segment to prevent path-traversal or injection via a
-  // crafted id value (e.g. one containing "../" or "?" characters).
-  const safeId = encodeURIComponent(id);
-  return `${base}/${type}/${safeId}`;
+  throw new Error('Not implemented: getExplorerUrl');
 }
 
 export function getAccountMinimumBalance(): string {
-  return "1.0";
+  throw new Error('Not implemented: getAccountMinimumBalance');
 }
 
 /**
@@ -621,18 +497,7 @@ export function getAccountMinimumBalance(): string {
  * @returns Fee in stroops as a string (e.g. "200")
  */
 export async function getRecommendedFee(network: StellarNetwork): Promise<string> {
-  const MAX_FEE_STROOPS = 10_000;
-  try {
-    const server = await getHorizonServer(network);
-    // fetchBaseFee() returns a number representing the current minimum fee in stroops.
-    const baseFee = await server.fetchBaseFee();
-    const bid = Math.min(baseFee * 2, MAX_FEE_STROOPS);
-    return String(bid);
-  } catch {
-    // Fall back to the hardcoded BASE_FEE constant if the fee-stats call fails
-    // so the transaction is still submitted rather than silently blocked.
-    return BASE_FEE;
-  }
+  throw new Error('Not implemented: getRecommendedFee');
 }
 
 /** Stroops per XLM (1 XLM = 10,000,000 stroops). */
@@ -650,10 +515,5 @@ const STROOPS_PER_XLM = 10_000_000;
  * @returns Fee string in the form "~X.XXXXXXX XLM"
  */
 export async function getEstimatedFeeXLM(network: StellarNetwork): Promise<string> {
-  const stroops = await getRecommendedFee(network);
-  const xlm = Number(stroops) / STROOPS_PER_XLM;
-  // Show up to 7 decimal places and strip trailing zeros so
-  // "~0.00002 XLM" is shown rather than "~0.0000200 XLM".
-  const formatted = xlm.toFixed(7).replace(/\.?0+$/, "") || "0";
-  return `~${formatted} XLM`;
+  throw new Error('Not implemented: getEstimatedFeeXLM');
 }

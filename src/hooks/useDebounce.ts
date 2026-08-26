@@ -7,12 +7,5 @@ import { useState, useEffect } from "react";
  * rapidly-typed input.
  */
 export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return debouncedValue;
+  throw new Error('Not implemented: useDebounce');
 }
