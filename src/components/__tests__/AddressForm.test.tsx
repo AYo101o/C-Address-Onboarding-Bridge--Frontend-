@@ -69,6 +69,64 @@ describe('AddressForm (#352)', () => {
     render(<AddressForm onSubmit={vi.fn()} initialValue="GABC" />);
     expect(screen.getByTestId('address-input')).toHaveValue('GABC');
   });
+
+  it('does not validate while typing, only on blur', () => {
+    render(<AddressForm onSubmit={vi.fn()} />);
+    const input = screen.getByTestId('address-input');
+    fireEvent.change(input, { target: { value: 'X' } });
+    expect(screen.queryByTestId('address-error')).not.toBeInTheDocument();
+  });
+
+  it('flags a C-address pasted into the G-address field with a specific message (#488)', () => {
+    render(<AddressForm onSubmit={vi.fn()} />);
+    const input = screen.getByTestId('address-input');
+    const cAddress = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+    fireEvent.change(input, { target: { value: cAddress } });
+    fireEvent.blur(input);
+    expect(screen.getByTestId('address-error')).toHaveTextContent('C-address');
+  });
+
+  it('distinguishes a truncated paste from a too-long one', () => {
+    render(<AddressForm onSubmit={vi.fn()} />);
+    const input = screen.getByTestId('address-input');
+    fireEvent.change(input, { target: { value: 'G' + 'A'.repeat(10) } });
+    fireEvent.blur(input);
+    expect(screen.getByTestId('address-error')).toHaveTextContent('cut off');
+
+    fireEvent.change(input, { target: { value: 'G' + 'A'.repeat(60) } });
+    fireEvent.blur(input);
+    expect(screen.getByTestId('address-error')).toHaveTextContent('too long');
+  });
+
+  it('flags a checksum failure distinctly from other errors', () => {
+    render(<AddressForm onSubmit={vi.fn()} />);
+    const input = screen.getByTestId('address-input');
+    // Right prefix and length, but not a valid ed25519 checksum.
+    const badChecksum = 'G' + 'B'.repeat(55);
+    fireEvent.change(input, { target: { value: badChecksum } });
+    fireEvent.blur(input);
+    expect(screen.getByTestId('address-error')).toHaveTextContent('checksum');
+  });
+
+  it('trims whitespace from a paste before validating', () => {
+    const onSubmit = vi.fn();
+    const validAddr = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+    render(<AddressForm onSubmit={onSubmit} />);
+    const input = screen.getByTestId('address-input');
+    fireEvent.change(input, { target: { value: `  ${validAddr}  ` } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue(validAddr);
+    expect(screen.queryByTestId('address-error')).not.toBeInTheDocument();
+  });
+
+  it('shows a truncated confirmation echo for a valid address', () => {
+    const validAddr = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+    render(<AddressForm onSubmit={vi.fn()} />);
+    const input = screen.getByTestId('address-input');
+    fireEvent.change(input, { target: { value: validAddr } });
+    fireEvent.blur(input);
+    expect(screen.getByTestId('address-confirmation')).toHaveTextContent('GAAAAAAA');
+  });
 });
 
 describe('validateStellarAddress', () => {
