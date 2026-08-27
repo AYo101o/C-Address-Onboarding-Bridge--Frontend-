@@ -4,6 +4,14 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import { connectWallet, checkConnection, getWalletAddress, getWalletNetwork } from "@/lib/stellar";
 import { APP_NETWORK, isSupportedNetwork, type StellarNetwork, type WalletNetworkState } from "@/lib/types";
 import { loadSession, markConnected, markDisconnected } from "@/lib/session";
+import {
+  cancelOperation as removeOperation,
+  createOperationId,
+  fundingOperations,
+  operationsToReplay,
+  removeOperations,
+  type QueuedOperation,
+} from "@/lib/offlineQueue";
 
 interface WalletContextType {
   address: string | null;
@@ -29,6 +37,19 @@ interface WalletContextType {
   dismissNetworkMismatch: () => void;
   connect: () => Promise<void>;
   disconnect: () => void;
+  /** True when the browser reports an active network connection. (#475) */
+  isOnline: boolean;
+  /** Operations parked while offline or awaiting funding confirmation. (#475) */
+  pendingOperations: QueuedOperation[];
+  /**
+   * Parks an operation. `safe` ops replay automatically on reconnect; `funding`
+   * ops stay queued for explicit confirmation. Returns the new operation's id.
+   */
+  enqueueOperation: (operation: Omit<QueuedOperation, "id">) => string;
+  /** Removes a queued operation, e.g. a user cancellation. */
+  cancelOperation: (id: string) => void;
+  /** Replays queued funding submissions after explicit user confirmation. */
+  confirmFunding: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
@@ -78,6 +99,99 @@ export function WalletProvider({ children }: { children: ReactNode }) {
    * would diverge between the server and the client. (#343)
    */
   const manuallyDisconnectedRef = useRef<boolean | null>(null);
+
+  /**
+   * Connectivity tracking for the offline-aware UI. Defaults to "online" so SSR
+   * and first paint never show a false offline state; the effect below corrects
+   * it on mount and keeps it in sync with `online`/`offline` events. (#475)
+   */
+  const [isOnline, setIsOnline] = useState(true);
+  const isOnlineRef = useRef(true);
+  const [pendingOperations, setPendingOperations] = useState<QueuedOperation[]>([]);
+  // Mirrors pendingOperations so event handlers always read the latest queue
+  // without re-subscribing the window listeners on every enqueue.
+  const pendingRef = useRef<QueuedOperation[]>([]);
+
+  const setPending = useCallback((next: QueuedOperation[] | ((prev: QueuedOperation[]) => QueuedOperation[])) => {
+    setPendingOperations((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      pendingRef.current = resolved;
+      return resolved;
+    });
+  }, []);
+
+  const replaySafeOperations = useCallback(() => {
+    const safe = operationsToReplay(pendingRef.current);
+    for (const op of safe) {
+      if (op.run) void Promise.resolve(op.run());
+    }
+    if (safe.length > 0) {
+      setPending(removeOperations(pendingRef.current, safe.map((op) => op.id)));
+    }
+  }, [setPending]);
+
+  const enqueueOperation = useCallback(
+    (operation: Omit<QueuedOperation, "id">) => {
+      const id = createOperationId();
+      const full: QueuedOperation = { ...operation, id };
+      setPending((prev) => [...prev, full]);
+      // If we're online, safe operations can run immediately; only offline
+      // (or funding) keeps them in the queue.
+      if (isOnlineRef.current && operation.kind === "safe" && operation.run) {
+        void Promise.resolve(operation.run())
+          .then(() => setPending((prev) => removeOperation(prev, id)))
+          .catch(() => {
+            /* leave queued if the immediate attempt fails */
+          });
+      }
+      return id;
+    },
+    [setPending],
+  );
+
+  const cancelOperation = useCallback(
+    (id: string) => {
+      setPending((prev) => removeOperation(prev, id));
+    },
+    [setPending],
+  );
+
+  const confirmFunding = useCallback(async () => {
+    const funding = fundingOperations(pendingRef.current);
+    for (const op of funding) {
+      if (op.run) await Promise.resolve(op.run());
+    }
+    if (funding.length > 0) {
+      setPending(removeOperations(pendingRef.current, funding.map((op) => op.id)));
+    }
+  }, [setPending]);
+
+  // Connectivity awareness: keep `isOnline` in sync and replay safe operations
+  // when the connection returns. (#475)
+  useEffect(() => {
+    const sync = () => {
+      const online = typeof navigator === "undefined" ? true : navigator.onLine;
+      isOnlineRef.current = online;
+      setIsOnline(online);
+    };
+    const goOnline = () => {
+      isOnlineRef.current = true;
+      setIsOnline(true);
+      replaySafeOperations();
+    };
+    const goOffline = () => {
+      isOnlineRef.current = false;
+      setIsOnline(false);
+    };
+
+    sync();
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [replaySafeOperations]);
 
   /**
    * Reads the sticky disconnect flag, hydrating it from the stored session on
@@ -269,6 +383,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         dismissNetworkMismatch,
         connect,
         disconnect,
+        isOnline,
+        pendingOperations,
+        enqueueOperation,
+        cancelOperation,
+        confirmFunding,
       }}
     >
       {children}
