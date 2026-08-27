@@ -1,5 +1,6 @@
 import { ArrowRight, Shield, Zap, CreditCard, Building2, Globe, Code } from "lucide-react";
 import { PrefetchLink } from "@/components/prefetch-link";
+import { RecentActivityFeed } from "@/components/RecentActivityFeed";
 
 const features = [
   {
@@ -150,6 +151,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <RecentActivityFeed />
 
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <div className="relative p-12 rounded-2xl border border-[var(--border)] bg-gradient-to-br from-[var(--primary)]/5 via-[var(--secondary)]/5 to-transparent overflow-hidden text-center">
