@@ -12,10 +12,11 @@
 import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, UserRound, Menu, X, AlertTriangle, LogOut } from "lucide-react";
+import { Wallet, ArrowLeftRight, CreditCard, Building2, LayoutDashboard, UserRound, Menu, X, AlertTriangle, LogOut, HelpCircle } from "lucide-react";
 import { useWallet } from "./wallet-provider";
 import { PrefetchLink } from "./prefetch-link";
 import { formatNetworkLabel } from "@/lib/stellar";
+import { useHelp } from "@/contexts/HelpContext";
 
 const navLinks = [
   { href: "/bridge", label: "Bridge", icon: ArrowLeftRight },
@@ -62,6 +63,8 @@ const Navbar = () => {
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const wasOpenRef = useRef(false);
+
+  const { openHelp } = useHelp();
 
   const toggleMobile = useCallback(() => setMobileOpen((v) => !v), []);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
@@ -163,6 +166,14 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={openHelp}
+              aria-label="Open help centre"
+              title="Help"
+              className="hidden sm:flex p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
             {isConnected ? (
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
                 <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
