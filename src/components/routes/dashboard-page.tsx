@@ -9,6 +9,9 @@ import LiveRegion from "@/components/live-region";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
 import type { BridgeTransactionData } from "@/lib/stellar";
+import { getFeeTierPreview } from "@/lib/api";
+import type { FeeTierStatus } from "@/lib/feeTiers";
+import FeeTierDisplay from "@/components/fee-tier-display";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 
 /** How often the dashboard polls for updated balances and transactions. */
@@ -35,6 +38,9 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<BridgeTransactionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // null covers both "no tiers configured" and "not loaded yet" — FeeTierDisplay
+  // hides itself either way. (#468)
+  const [feeTierStatus, setFeeTierStatus] = useState<FeeTierStatus | null>(null);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -55,15 +61,20 @@ export default function DashboardPage() {
       if (isInitial) setLoading(true);
       setError(null);
       try {
-        const [balResult, txResult] = await Promise.all([
+        // getFeeTierPreview never throws (resolves null on any failure), so it
+        // can share this Promise.all without a failed tier fetch aborting the
+        // balance/transaction load or being caught below as a page-level error.
+        const [balResult, txResult, tierResult] = await Promise.all([
           getAccountBalances(address, network),
           fetchRecentTransactions(address, network, 10),
+          getFeeTierPreview(address, network),
         ]);
         if (cancelled) return;
         setBalance(balResult.total);
         // Reuse the previous reference when nothing changed so React bails out
         // of re-rendering the memoized transaction list.
         setTransactions((prev) => (areTransactionsEqual(prev, txResult) ? prev : txResult));
+        setFeeTierStatus(tierResult);
       } catch (e: unknown) {
         if (cancelled) return;
         setError(toSafeErrorMessage(e, "Failed to fetch data. Please try again."));
@@ -94,6 +105,7 @@ export default function DashboardPage() {
   // Chain data is only shown for a network the app actually queried. (#289)
   const shownTransactions = isNetworkSupported ? transactions : [];
   const shownBalance = isNetworkSupported ? balance : null;
+  const shownFeeTierStatus = isNetworkSupported ? feeTierStatus : null;
   const showLoading = loading && isNetworkSupported;
 
   const confirmedCount = shownTransactions.filter((t) => t.status === "confirmed").length;
@@ -244,6 +256,13 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {shownFeeTierStatus && (
+        <div className="mb-8">
+          <h3 className="text-sm font-semibold mb-2 text-[var(--text-muted)]">Fee Tier</h3>
+          <FeeTierDisplay status={shownFeeTierStatus} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <Link
