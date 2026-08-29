@@ -10,7 +10,10 @@ import { validateUnlockTime, type Lock as LockRecord } from "@/lib/locks";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useStepTransition } from "@/hooks/useStepTransition";
 import LiveRegion from "@/components/live-region";
+import BatchFundingForm from "@/components/BatchFundingForm";
+import { submitBatchFunding } from "@/lib/api";
 
+type FlowMode = "single" | "batch";
 type Step = "form" | "review" | "confirm";
 type TxStatus = "idle" | "signing" | "submitting" | "success" | "error";
 
@@ -38,6 +41,7 @@ export default function BridgePage() {
   // names as its source, so any other value could only ever produce a
   // tx_bad_auth failure after the user had already approved the signature. (#287)
   const fromAddress = address ?? "";
+  const [flowMode, setFlowMode] = useState<FlowMode>("single");
   const [toAddress, setToAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [asset, setAsset] = useState("XLM");
@@ -225,6 +229,23 @@ export default function BridgePage() {
     setLockResult(null);
   };
 
+  // Batch funding submits through the API's batch endpoint (which invokes the
+  // contract's batch_fund_c_address), not through a Freighter-signed classic
+  // payment repeated per recipient — see issue #465.
+  const handleBatchSubmit = async (recipients: { address: string; amount: string }[]) => {
+    if (!isNetworkSupported) {
+      throw new Error(
+        networkStatus === "UNSUPPORTED"
+          ? `Freighter is on ${networkLabel}. Switch to Testnet or Mainnet to use the bridge.`
+          : "Freighter's network couldn't be read. Unlock the extension and reload before submitting."
+      );
+    }
+    const response = await submitBatchFunding(fromAddress, recipients, network);
+    return response.results;
+  };
+
+  const batchDisabled = !isConnected || !isNetworkSupported || !isOnline;
+
   // Announcements for screen readers, derived from the existing status state.
   // The visible UI copy is unchanged; these strings follow exactly the wording
   // requested in #224 and the same sense as the visible button/screen copy.
@@ -259,6 +280,80 @@ export default function BridgePage() {
             <LiveRegion message={politeAnnouncement} />
             <LiveRegion politeness="assertive" message={assertiveAnnouncement} />
             <LiveRegion message={stepAnnouncement} />
+
+            <div
+              role="tablist"
+              aria-label="Funding mode"
+              className="flex gap-1 p-1 mb-6 rounded-lg bg-[var(--surface-2)] w-fit"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flowMode === "single"}
+                data-testid="flow-mode-single"
+                onClick={() => setFlowMode("single")}
+                disabled={txStatus === "signing" || txStatus === "submitting"}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors disabled:opacity-50 ${
+                  flowMode === "single" ? "bg-[var(--primary)] text-white" : "text-[var(--text-muted)]"
+                }`}
+              >
+                Single Recipient
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={flowMode === "batch"}
+                data-testid="flow-mode-batch"
+                onClick={() => setFlowMode("batch")}
+                disabled={txStatus === "signing" || txStatus === "submitting"}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors disabled:opacity-50 ${
+                  flowMode === "batch" ? "bg-[var(--primary)] text-white" : "text-[var(--text-muted)]"
+                }`}
+              >
+                Batch (CSV)
+              </button>
+            </div>
+
+            {flowMode === "batch" && (
+              <div className="space-y-6">
+                <h2 className="text-xl font-semibold mb-4">Batch Fund C-Addresses</h2>
+
+                {!isOnline && (
+                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[var(--text-muted)]">
+                      You&apos;re offline, so the batch can&apos;t submit right now.
+                    </p>
+                  </div>
+                )}
+                {isConnected && !isNetworkSupported && (
+                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-[var(--text-muted)]">
+                      {networkStatus === "UNSUPPORTED"
+                        ? `Freighter is on ${networkLabel}. Switch to Testnet or Mainnet to use the bridge.`
+                        : "Freighter's network couldn't be read. Unlock the extension and reload."}
+                    </p>
+                  </div>
+                )}
+                {!isConnected && (
+                  <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-dashed border-[var(--border)]">
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Connect Freighter to choose the source account before submitting a batch.
+                    </p>
+                  </div>
+                )}
+
+                <BatchFundingForm
+                  onSubmit={handleBatchSubmit}
+                  estimateFee={() => getEstimatedFeeXLM(network)}
+                  disabled={batchDisabled}
+                />
+              </div>
+            )}
+
+            {flowMode === "single" && (
+              <>
             {step === "form" && (
               <div className="space-y-6">
                 <h2
@@ -661,6 +756,8 @@ export default function BridgePage() {
                   Try Again
                 </button>
               </div>
+            )}
+              </>
             )}
           </div>
         </div>
