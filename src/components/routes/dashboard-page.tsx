@@ -5,6 +5,7 @@ import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLin
 import { useWallet } from "@/components/wallet-provider";
 import AvatarUpload from "@/components/avatar-upload";
 import TransactionHistory from "@/components/transaction-history";
+import ClaimsPanel from "@/components/claims-panel";
 import LiveRegion from "@/components/live-region";
 import Link from "next/link";
 import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage, requestTestXLM } from "@/lib/stellar";
@@ -380,6 +381,10 @@ export default function DashboardPage() {
       )}
 
       <TransactionHistory transactions={shownTransactions} loading={showLoading} network={network} address={address ?? undefined} />
+
+      <div className="mt-8">
+        <ClaimsPanel address={address ?? null} network={network} isNetworkSupported={isNetworkSupported} />
+      </div>
     </div>
   );
 }
