@@ -5,9 +5,10 @@ import { Wallet, ArrowLeftRight, CreditCard, Building2, Copy, Check, ExternalLin
 import { useWallet } from "@/components/wallet-provider";
 import AvatarUpload from "@/components/avatar-upload";
 import TransactionHistory from "@/components/transaction-history";
+import ClaimsPanel from "@/components/claims-panel";
 import LiveRegion from "@/components/live-region";
 import Link from "next/link";
-import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage } from "@/lib/stellar";
+import { getAccountBalances, fetchRecentTransactions, getExplorerUrl, formatNetworkLabel, toSafeErrorMessage, requestTestXLM } from "@/lib/stellar";
 import type { BridgeTransactionData } from "@/lib/stellar";
 import { getFeeTierPreview } from "@/lib/api";
 import type { FeeTierStatus } from "@/lib/feeTiers";
@@ -38,9 +39,9 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<BridgeTransactionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // null covers both "no tiers configured" and "not loaded yet" — FeeTierDisplay
-  // hides itself either way. (#468)
-  const [feeTierStatus, setFeeTierStatus] = useState<FeeTierStatus | null>(null);
+  const [faucetLoading, setFaucetLoading] = useState(false);
+  const [faucetMessage, setFaucetMessage] = useState<string | null>(null);
+  const [faucetError, setFaucetError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isConnected || !address) return;
@@ -127,6 +128,20 @@ export default function DashboardPage() {
         ? "Copy failed. Check clipboard permissions and try again."
         : "";
 
+  const handleFaucet = async () => {
+    if (!address) return;
+    setFaucetLoading(true);
+    setFaucetMessage(null);
+    setFaucetError(null);
+    const result = await requestTestXLM(address);
+    if (result.success) {
+      setFaucetMessage(result.message ?? "Test XLM requested.");
+    } else {
+      setFaucetError(result.message ?? "Faucet request failed.");
+    }
+    setFaucetLoading(false);
+  };
+
   if (!isConnected) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
@@ -169,6 +184,34 @@ export default function DashboardPage() {
       <div className="card p-5 mb-8">
         <AvatarUpload address={address ?? null} />
       </div>
+
+      {isConnected && (
+        <div className="card p-5 mb-8">
+          <h2 className="text-sm font-medium text-[var(--text-muted)] mb-3">Developer Checklist</h2>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm">
+              {isConnected ? <Check className="w-4 h-4 text-[var(--success)]" /> : <X className="w-4 h-4 text-[var(--text-muted)]" />}
+              <span className={isConnected ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
+                Connect wallet
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              {shownBalance !== null && parseFloat(shownBalance) > 0 ? (
+                <Check className="w-4 h-4 text-[var(--success)]" />
+              ) : (
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              )}
+              <span className={shownBalance !== null && parseFloat(shownBalance) > 0 ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
+                Fund account
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <ArrowLeftRight className="w-4 h-4 text-[var(--text-muted)]" />
+              <span className="text-[var(--text-muted)]">Bridge assets</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <div className="card p-5">
@@ -235,6 +278,30 @@ export default function DashboardPage() {
                 {shownBalance !== null ? parseFloat(shownBalance).toFixed(2) : "—"}
               </div>
               <div className="text-xs text-[var(--text-muted)]">XLM</div>
+              {network === "TESTNET" && !showLoading && (
+                <div className="mt-3">
+                  <button
+                    onClick={handleFaucet}
+                    disabled={faucetLoading}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--primary)]/10 text-[var(--primary-light)] text-xs font-medium hover:bg-[var(--primary)]/20 transition-colors disabled:opacity-50"
+                  >
+                    {faucetLoading ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" />
+                        Requesting...
+                      </>
+                    ) : (
+                      "Request Test XLM"
+                    )}
+                  </button>
+                  {faucetMessage && (
+                    <p className="text-xs text-[var(--success)] mt-2">{faucetMessage}</p>
+                  )}
+                  {faucetError && (
+                    <p className="text-xs text-[var(--error)] mt-2">{faucetError}</p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -330,6 +397,10 @@ export default function DashboardPage() {
       )}
 
       <TransactionHistory transactions={shownTransactions} loading={showLoading} network={network} address={address ?? undefined} />
+
+      <div className="mt-8">
+        <ClaimsPanel address={address ?? null} network={network} isNetworkSupported={isNetworkSupported} />
+      </div>
     </div>
   );
 }
