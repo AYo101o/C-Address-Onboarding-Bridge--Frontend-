@@ -36,6 +36,7 @@ export default function BridgePage() {
     isOnline,
     connect,
   } = useWallet();
+  const { openHelp } = useHelp();
   // The source is always Freighter's connected account, never free text.
   // Freighter signs with its active account regardless of what the transaction
   // names as its source, so any other value could only ever produce a
@@ -445,7 +446,17 @@ export default function BridgePage() {
                 </div>
 
                 <div>
-                  <label htmlFor="to-address" className="block text-sm font-medium mb-2">To (C-address)</label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <label htmlFor="to-address" className="block text-sm font-medium">To (C-address)</label>
+                    <button
+                      type="button"
+                      onClick={openHelp}
+                      className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
+                      aria-label="Learn about C-addresses"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <div className="relative">
                     <Send className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
@@ -619,7 +630,17 @@ export default function BridgePage() {
                     <span className="text-sm">{networkLabel}</span>
                   </div>
                   <div className="flex justify-between items-center p-4 rounded-lg bg-[var(--surface-2)]">
-                    <span className="text-sm text-[var(--text-muted)]">Fee</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-[var(--text-muted)]">Fee</span>
+                      <button
+                        type="button"
+                        onClick={openHelp}
+                        className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
+                        aria-label="Learn about fees"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <span className="text-sm">{estimatedFee}</span>
                   </div>
                 </div>
