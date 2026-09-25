@@ -113,7 +113,7 @@ describe("Wallet disconnect control (#288)", () => {
     expect(mobileDisconnect!.getAttribute("disabled")).toBeNull();
   });
 
-  it.skip("stays disconnected past several poll intervals", async () => {
+  it("stays disconnected past several poll intervals", async () => {
     await click(query('button[aria-label="Disconnect wallet"]'));
     expect(container.textContent).not.toContain(CHIP);
 
@@ -124,7 +124,7 @@ describe("Wallet disconnect control (#288)", () => {
     expect(container.textContent).toContain("Connect Wallet");
   });
 
-  it.skip("disconnects from the mobile menu and stays disconnected", async () => {
+  it("disconnects from the mobile menu and stays disconnected", async () => {
     await openMobileMenu();
     const mobileDisconnect = Array.from(query("#mobile-menu")!.querySelectorAll("button")).find(
       (b) => b.textContent?.includes("Disconnect Wallet")
@@ -136,7 +136,7 @@ describe("Wallet disconnect control (#288)", () => {
     expect(container.textContent).not.toContain(CHIP);
   });
 
-  it.skip("reconnects when the user explicitly connects again", async () => {
+  it("reconnects when the user explicitly connects again", async () => {
     await click(query('button[aria-label="Disconnect wallet"]'));
     await advance(5_000);
     expect(container.textContent).not.toContain(CHIP);
@@ -156,7 +156,7 @@ describe("Wallet disconnect control (#288)", () => {
 
   // #343: the flag used to live only in a ref, so a reload re-adopted the
   // still-connected Freighter account and undid the disconnect.
-  it.skip("stays disconnected across a remount (page reload)", async () => {
+  it("stays disconnected across a remount (page reload)", async () => {
     await click(query('button[aria-label="Disconnect wallet"]'));
     expect(container.textContent).not.toContain(CHIP);
 
