@@ -13,6 +13,8 @@ export interface TranslationSet {
   common: {
     connect_wallet: string;
     disconnect: string;
+    disconnectWalletLabel: string;
+    disconnectWallet: string;
     loading: string;
     error: string;
     success: string;
@@ -66,6 +68,8 @@ const translations: Record<Locale, TranslationSet> = {
     common: {
       connect_wallet: 'Connect Wallet',
       disconnect: 'Disconnect',
+      disconnectWalletLabel: 'Disconnect wallet',
+      disconnectWallet: 'Disconnect Wallet',
       loading: 'Loading...',
       error: 'Error',
       success: 'Success',
@@ -117,6 +121,8 @@ const translations: Record<Locale, TranslationSet> = {
     common: {
       connect_wallet: 'Conectar Billetera',
       disconnect: 'Desconectar',
+      disconnectWalletLabel: 'Desconectar billetera',
+      disconnectWallet: 'Desconectar billetera',
       loading: 'Cargando...',
       error: 'Error',
       success: 'Éxito',
@@ -168,6 +174,8 @@ const translations: Record<Locale, TranslationSet> = {
     common: {
       connect_wallet: 'Connecter le Portefeuille',
       disconnect: 'Déconnecter',
+      disconnectWalletLabel: 'Déconnecter le portefeuille',
+      disconnectWallet: 'Déconnecter le portefeuille',
       loading: 'Chargement...',
       error: 'Erreur',
       success: 'Succès',
@@ -219,6 +227,8 @@ const translations: Record<Locale, TranslationSet> = {
     common: {
       connect_wallet: 'Conectar Carteira',
       disconnect: 'Desconectar',
+      disconnectWalletLabel: 'Desconectar billetera',
+      disconnectWallet: 'Desconectar billetera',
       loading: 'Carregando...',
       error: 'Erro',
       success: 'Sucesso',

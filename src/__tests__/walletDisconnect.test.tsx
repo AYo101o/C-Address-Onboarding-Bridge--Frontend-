@@ -94,12 +94,12 @@ describe("Wallet disconnect control (#288)", () => {
     await click(query('button[aria-controls="mobile-menu"]'));
   };
 
-  it.skip("renders a disconnect control on desktop when connected", () => {
+  it("renders a disconnect control on desktop when connected", () => {
     expect(container.textContent).toContain(CHIP);
     expect(query('button[aria-label="Disconnect wallet"]')).not.toBeNull();
   });
 
-  it.skip("renders a keyboard-focusable disconnect control in the mobile menu", async () => {
+  it("renders a keyboard-focusable disconnect control in the mobile menu", async () => {
     await openMobileMenu();
 
     const menu = query("#mobile-menu");
