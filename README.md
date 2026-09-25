@@ -132,3 +132,6 @@ The Horizon endpoint cannot be overridden — it is always `https://horizon-test
 ## License
 
 MIT
+
+## Note to maintainers
+- #638: `isValidHash` in `src/lib/confirmations.ts` already accepts 64-char hex hashes case-insensitively; only the `.skip` on its test remains.
