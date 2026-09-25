@@ -132,3 +132,7 @@ The Horizon endpoint cannot be overridden — it is always `https://horizon-test
 ## License
 
 MIT
+
+## Note to maintainers
+
+`getAccountMinimumBalance()` in `src/lib/stellar.ts` (#577) is already implemented on main (it returns the base reserve, `"1.0"`), so no code change was needed.
