@@ -127,7 +127,7 @@ describe("Bridge form — lock option (#467)", () => {
     });
   });
 
-  it.skip("submits a locked transfer via createLock and shows the locked confirmation", async () => {
+  it("submits a locked transfer via createLock and shows the locked confirmation", async () => {
     const unlockTime = Date.now() + 3_600_000;
     createLockMock.mockResolvedValue({
       id: "lock-1",
