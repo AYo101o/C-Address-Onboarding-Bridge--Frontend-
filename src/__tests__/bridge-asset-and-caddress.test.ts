@@ -106,7 +106,7 @@ describe("asset resolution honors the requested assetCode (#285)", () => {
     expect(capturedOperation?.asset.issuer).toBe(USDC_ISSUER);
   });
 
-  it.skip("throws instead of substituting an asset when no trustline exists", async () => {
+  it("throws instead of substituting an asset when no trustline exists", async () => {
     await expect(
       buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "SHITCOIN", "TESTNET")
     ).rejects.toThrow(/trustline/i);
