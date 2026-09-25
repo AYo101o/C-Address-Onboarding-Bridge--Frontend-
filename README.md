@@ -136,3 +136,7 @@ MIT
 ## Note to maintainers
 
 `getAccountBalances()` in `src/lib/stellar.ts` is already implemented on main, so no code change was needed for #575.
+
+## Note to maintainers
+
+`clearAccountBalancesCache()` in `src/lib/stellar.ts` is already implemented on main, so no code change was needed for #576.
