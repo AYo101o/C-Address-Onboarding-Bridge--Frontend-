@@ -141,7 +141,7 @@ describe("source address must be Freighter's active account (#287)", () => {
     submitTransactionMock.mockReset();
   });
 
-  it.skip("rejects with an actionable message naming both accounts", async () => {
+  it("rejects with an actionable message naming both accounts", async () => {
     await expect(
       buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET")
     ).rejects.toThrow(/doesn't match the From address/);
@@ -156,7 +156,7 @@ describe("source address must be Freighter's active account (#287)", () => {
     expect(submitTransactionMock).not.toHaveBeenCalled();
   });
 
-  it.skip("allows the payment once the active account matches", async () => {
+  it("allows the payment once the active account matches", async () => {
     vi.mocked(freighter.getAddress).mockResolvedValue({ address: G_SOURCE } as never);
 
     const result = await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
