@@ -90,14 +90,14 @@ describe("asset resolution honors the requested assetCode (#285)", () => {
     submitTransactionMock.mockReset();
   });
 
-  it.skip("builds a native XLM operation when XLM is selected", async () => {
+  it("builds a native XLM operation when XLM is selected", async () => {
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
 
     expect(capturedOperation).not.toBeNull();
     expect(capturedOperation?.asset.isNative()).toBe(true);
   });
 
-  it.skip("builds a USDC operation (not XLM) when USDC is selected", async () => {
+  it("builds a USDC operation (not XLM) when USDC is selected", async () => {
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "USDC", "TESTNET");
 
     expect(capturedOperation).not.toBeNull();
