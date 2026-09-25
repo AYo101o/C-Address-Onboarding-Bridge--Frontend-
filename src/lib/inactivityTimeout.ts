@@ -42,7 +42,14 @@ export function getLastActivityTime(now: number = Date.now()): number {
   if (!store) return now;
   try {
     const stored = store.getItem(INACTIVITY_STORAGE_KEY);
-    return stored ? parseInt(stored, 10) : now;
+    if (!stored) return now;
+    const parsed = parseInt(stored, 10);
+    if (!Number.isFinite(parsed) || parsed > now) {
+      // Corrupt or future timestamp: reset it.
+      store.removeItem(INACTIVITY_STORAGE_KEY);
+      return now;
+    }
+    return parsed;
   } catch {
     return now;
   }
