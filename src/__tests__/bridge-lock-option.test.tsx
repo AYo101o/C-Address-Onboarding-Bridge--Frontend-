@@ -127,7 +127,7 @@ describe("Bridge form — lock option (#467)", () => {
     });
   });
 
-  it.skip("submits a locked transfer via createLock and shows the locked confirmation", async () => {
+  it("submits a locked transfer via createLock and shows the locked confirmation", async () => {
     const unlockTime = Date.now() + 3_600_000;
     createLockMock.mockResolvedValue({
       id: "lock-1",
@@ -167,7 +167,7 @@ describe("Bridge form — lock option (#467)", () => {
     expect(await screen.findByText("Transfer Locked")).toBeInTheDocument();
   });
 
-  it.skip("shows an error and stays recoverable when lock creation fails", async () => {
+  it("shows an error and stays recoverable when lock creation fails", async () => {
     createLockMock.mockRejectedValue(new Error("Lock creation failed. Please try again."));
 
     render(<BridgePage />);

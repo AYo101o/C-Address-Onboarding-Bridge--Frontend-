@@ -5,6 +5,7 @@ import { getExplorerUrl } from "@/lib/stellar";
 import type { StellarNetwork } from "@/lib/types";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import LiveRegion from "@/components/live-region";
+import TransactionExportControl from "@/components/transaction-export";
 
 const typeConfig: Record<string, { icon: typeof ArrowLeftRight; label: string; color: string }> = {
   "g-to-c": { icon: ArrowLeftRight, label: "G → C Bridge", color: "text-[var(--primary-light)]" },
@@ -326,8 +327,9 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-      <div className="p-5 border-b border-[var(--border)]">
+      <div className="p-5 border-b border-[var(--border)] flex items-center justify-between gap-3">
         <h3 className="font-semibold">Recent Transactions</h3>
+        <TransactionExportControl address={address} network={network} />
       </div>
 
       <div className="p-4 border-b border-[var(--border)] space-y-3">
