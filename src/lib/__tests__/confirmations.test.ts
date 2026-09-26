@@ -64,7 +64,7 @@ describe("confirmations", () => {
   });
 
   describe("isValidHash", () => {
-    it.skip("accepts valid 64-char hex hashes", () => {
+    it("accepts valid 64-char hex hashes", () => {
       expect(isValidHash("a".repeat(64))).toBe(true);
       expect(isValidHash("A".repeat(64))).toBe(true);
       expect(isValidHash("0123456789abcdefABCDEF".repeat(3) + "0123")).toBe(true);
