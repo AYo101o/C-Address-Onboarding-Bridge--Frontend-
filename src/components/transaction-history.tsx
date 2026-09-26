@@ -370,6 +370,12 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
   const handleClaimClick = () => {
     if (canClaim) setConfirmingClaim(true);
   };
+  const handleExportClick = () => {
+    if (selectedCount === 0) return;
+    const csv = buildTransactionsCsv(selectedTransactions);
+    downloadCsv(csv, `transactions-${new Date().toISOString().slice(0, 10)}.csv`);
+    setStatusMessage(`Exported ${selectedCount} transaction${selectedCount === 1 ? "" : "s"}.`);
+  };
   const handleConfirmClaim = () => {
     setStatusMessage(`Claimed ${selectedCount} transaction${selectedCount === 1 ? "" : "s"}.`);
     setSelectedIds((previous) => {
@@ -502,6 +508,13 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
               className="text-sm text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
             >
               Clear selection
+            </button>
+            <button
+              type="button"
+              onClick={handleExportClick}
+              className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-sm hover:bg-[var(--surface-2)] transition-colors"
+            >
+              Export
             </button>
             <button
               type="button"

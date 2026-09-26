@@ -136,7 +136,7 @@ describe("bulk row selection", () => {
 });
 
 describe("bulk export (mixed eligibility)", () => {
-  it.skip("stays enabled for a mixed selection since export applies to every row", () => {
+  it("stays enabled for a mixed selection since export applies to every row", () => {
     render(<TransactionHistory transactions={ALL_TX} loading={false} network="TESTNET" />);
 
     fireEvent.click(rowCheckbox(CLAIMABLE));
