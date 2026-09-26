@@ -129,6 +129,10 @@ The Horizon endpoint cannot be overridden — it is always `https://horizon-test
 3. **Enter** the Soroban C-address you want to fund.
 4. **Confirm** — sign with Freighter and submit to the Stellar network.
 
+## Note to maintainers
+
+Issues #569 (`getRecommendedFee()`), #570 (`getEstimatedFeeXLM()`), #571 (`useCopyToClipboard()`) and #572 (`useDebounce()`) are already implemented on `main`, so there was no code left to change. This note records that so the issues can be closed.
+
 ## License
 
 MIT
