@@ -436,8 +436,8 @@ const Navbar = () => {
                 <NetworkBadge {...networkBadge} />
                 <button
                   onClick={handleDisconnect}
-                  aria-label={t("common.disconnect")}
-                  title={t("common.disconnect")}
+                  aria-label={t("common.disconnectWalletLabel")}
+                  title={t("common.disconnectWalletLabel")}
                   className="ml-1 p-1 rounded text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -633,7 +633,7 @@ const Navbar = () => {
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--border)] text-sm font-medium text-[var(--text-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
                 >
                   <LogOut className="w-4 h-4" />
-                  {t("common.disconnect")}
+                  {t("common.disconnectWallet")}
                 </button>
               </div>
             ) : (
