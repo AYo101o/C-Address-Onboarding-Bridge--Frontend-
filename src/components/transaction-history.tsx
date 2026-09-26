@@ -324,6 +324,18 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
     () => transactions.reduce((count, tx) => count + (selectedIds.has(tx.id) ? 1 : 0), 0),
     [transactions, selectedIds]
   );
+  const selectedTransactions = useMemo(
+    () => transactions.filter((tx) => selectedIds.has(tx.id)),
+    [transactions, selectedIds]
+  );
+  const claimIneligibleCount = selectedTransactions.filter((tx) => !isClaimEligible(tx)).length;
+  const canClaim = selectedCount > 0 && claimIneligibleCount === 0;
+  const claimDisabledReason =
+    selectedCount > 0 && claimIneligibleCount > 0
+      ? `${claimIneligibleCount} of ${selectedCount} selected transaction${selectedCount === 1 ? "" : "s"} can't be claimed — only confirmed G → C bridge transactions are eligible. Adjust your selection to claim the rest.`
+      : "";
+  const [confirmingClaim, setConfirmingClaim] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const filteredIds = useMemo(() => filteredTransactions.map((tx) => tx.id), [filteredTransactions]);
   const selectedFilteredCount = useMemo(
     () => filteredIds.reduce((count, id) => count + (selectedIds.has(id) ? 1 : 0), 0),
@@ -354,6 +366,18 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
       });
       return next;
     });
+  };
+  const handleClaimClick = () => {
+    if (canClaim) setConfirmingClaim(true);
+  };
+  const handleConfirmClaim = () => {
+    setStatusMessage(`Claimed ${selectedCount} transaction${selectedCount === 1 ? "" : "s"}.`);
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      selectedTransactions.forEach((tx) => next.delete(tx.id));
+      return next;
+    });
+    setConfirmingClaim(false);
   };
 
   const items = useMemo(
@@ -479,7 +503,21 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
             >
               Clear selection
             </button>
+            <button
+              type="button"
+              onClick={handleClaimClick}
+              disabled={!canClaim}
+              title={canClaim ? `Claim ${selectedCount} selected transactions` : claimDisabledReason}
+              className="px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white text-sm hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Claim
+            </button>
           </div>
+        )}
+        {claimDisabledReason && (
+          <p className="text-xs text-[var(--text-muted)]" role="note">
+            {claimDisabledReason}
+          </p>
         )}
       </div>
 
@@ -530,12 +568,8 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
         </a>
       </div>
 
-      {/* TODO(next-bounty): `statusMessage` came with the bulk-actions state. */}
-      {/* <LiveRegion message={statusMessage} /> */}
+      <LiveRegion message={statusMessage} />
 
-      {/* TODO(next-bounty): bulk-claim confirmation dialog, orphaned by the same
-          half-merge. Restore alongside the selection state from commit 4237d8e. */}
-{/*
       {confirmingClaim && (
         <div
           role="dialog"
@@ -544,7 +578,9 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
           aria-describedby="bulk-claim-description"
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-          onKeyDown={handleDialogKeyDown}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setConfirmingClaim(false);
+          }}
           data-testid="bulk-claim-dialog"
         >
           <div className="card w-full max-w-sm p-6" style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
@@ -558,7 +594,7 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                onClick={handleCancelClaim}
+                onClick={() => setConfirmingClaim(false)}
                 autoFocus
                 className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm hover:bg-[var(--surface-2)] transition-colors"
               >
@@ -575,7 +611,6 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
           </div>
         </div>
       )}
-*/}
     </div>
   );
 }
