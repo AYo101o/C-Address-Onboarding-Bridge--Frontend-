@@ -15,6 +15,7 @@ import type { FeeTierStatus } from "@/lib/feeTiers";
 import FeeTierDisplay from "@/components/fee-tier-display";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
+import { BarChart } from "@/components/bar-chart";
 
 /**
  * Reserves the same two-line footprint as the loaded stat value (a bold
@@ -135,51 +136,6 @@ function formatVolume(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-interface BarChartProps {
-  buckets: AnalyticsBucket[];
-  valueOf: (bucket: AnalyticsBucket) => number;
-  ariaLabel: string;
-  color: string;
-}
-
-/** Minimal accessible bar chart. Each bar carries a <title> with its value. */
-function BarChart({ buckets, valueOf, ariaLabel, color }: BarChartProps) {
-  const max = Math.max(...buckets.map(valueOf), 1);
-  const width = 600;
-  const height = 140;
-  const gap = 2;
-  const slot = width / buckets.length;
-  const barWidth = Math.max(2, slot - gap * 2);
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      role="img"
-      aria-label={ariaLabel}
-      className="w-full h-36"
-      preserveAspectRatio="none"
-    >
-      {buckets.map((bucket, index) => {
-        const value = valueOf(bucket);
-        const barHeight = (value / max) * (height - 8);
-        return (
-          <rect
-            key={bucket.date}
-            x={index * slot + gap}
-            y={height - barHeight - 4}
-            width={barWidth}
-            height={value > 0 ? Math.max(barHeight, 1) : 0}
-            rx={1}
-            fill={color}
-          >
-            <title>{`${bucket.label}: ${formatVolume(value)}`}</title>
-          </rect>
-        );
-      })}
-    </svg>
-  );
-}
-
 /**
  * Analytics charts for the dashboard: volume and transaction count over a
  * selectable range, broken down by asset, with a data table as the accessible
@@ -260,6 +216,7 @@ export function AnalyticsSection({ transactions }: { transactions: BridgeTransac
               <BarChart
                 buckets={buckets}
                 valueOf={(bucket) => bucket.volume}
+                formatValue={formatVolume}
                 ariaLabel={`Volume over the last ${range} days`}
                 color="var(--primary)"
               />
@@ -269,6 +226,7 @@ export function AnalyticsSection({ transactions }: { transactions: BridgeTransac
               <BarChart
                 buckets={buckets}
                 valueOf={(bucket) => bucket.count}
+                formatValue={formatVolume}
                 ariaLabel={`Transaction count over the last ${range} days`}
                 color="var(--secondary)"
               />

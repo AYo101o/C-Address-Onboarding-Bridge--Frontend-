@@ -21,6 +21,7 @@ import {
   UserRound,
   BookUser,
   CalendarClock,
+  Share2,
   Menu,
   X,
   AlertTriangle,
@@ -46,6 +47,7 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/address-book", label: "Address Book", icon: BookUser },
   { href: "/schedules", label: "Schedules", icon: CalendarClock },
+  { href: "/referrals", label: "Referrals", icon: Share2 },
   { href: "/profile", label: "Profile", icon: UserRound },
 ];
 

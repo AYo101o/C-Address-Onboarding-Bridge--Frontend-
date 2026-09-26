@@ -8,6 +8,7 @@ import type { FeeTierStatus } from "./feeTiers";
 // NOTE(ci-cleanup): without this, `Lock` silently resolved to the DOM Web Locks
 // API type from lib.dom, so every lock field access failed to typecheck.
 import type { Lock } from "./locks";
+import type { ReferralStats } from "./referrals";
 
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
