@@ -97,11 +97,13 @@ interface Props {
 const TransactionItem = memo(function TransactionItem({
   tx,
   network,
+  selected,
+  onToggleSelected,
 }: {
   tx: BridgeTransactionData;
   network: Props["network"];
-  // selected: boolean;
-  // onToggleSelected: (id: string) => void;
+  selected: boolean;
+  onToggleSelected: (id: string) => void;
 }) {
   const type = typeConfig[tx.type] || typeConfig["g-to-c"];
   const status = statusConfig[tx.status];
@@ -125,13 +127,13 @@ const TransactionItem = memo(function TransactionItem({
               every row regardless of claim eligibility — mixed selections
               (some rows eligible, some not) are the normal case the bulk
               toolbar below has to explain, not something to prevent. (#486) */}
-          {/* <input
+          <input
             type="checkbox"
             checked={selected}
             onChange={() => onToggleSelected(tx.id)}
             aria-label={`Select ${type.label} of ${tx.amount} ${tx.asset}`}
             className="w-4 h-4 flex-shrink-0 accent-[var(--primary)]"
-          /> */}
+          />
           <div className="w-9 h-9 rounded-lg bg-[var(--surface-2)] flex items-center justify-center flex-shrink-0">
             <Icon className={`w-4 h-4 ${type.color}`} />
           </div>
@@ -245,6 +247,7 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
   const [directionFilter, setDirectionFilter] = useState(initial.direction);
   const [dateFrom, setDateFrom] = useState(initial.from);
   const [dateTo, setDateTo] = useState(initial.to);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const debouncedSearchQuery = useDebounceValue(searchQuery, 300);
 
@@ -316,9 +319,31 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
     });
   }, [transactions, debouncedSearchQuery, statusFilter, assetFilter, directionFilter, dateFrom, dateTo, address]);
 
+  const selectedCount = useMemo(
+    () => transactions.reduce((count, tx) => count + (selectedIds.has(tx.id) ? 1 : 0), 0),
+    [transactions, selectedIds]
+  );
+  const toggleRow = (id: string) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const items = useMemo(
-    () => filteredTransactions.map((tx) => <TransactionItem key={tx.id} tx={tx} network={network} />),
-    [filteredTransactions, network]
+    () =>
+      filteredTransactions.map((tx) => (
+        <TransactionItem
+          key={tx.id}
+          tx={tx}
+          network={network}
+          selected={selectedIds.has(tx.id)}
+          onToggleSelected={toggleRow}
+        />
+      )),
+    [filteredTransactions, network, selectedIds]
   );
 
   const showFilteredEmpty = !loading && hasActiveFilters && filteredTransactions.length === 0;
@@ -402,6 +427,20 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
             </button>
           )}
         </div>
+        {selectedCount > 0 && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium" data-testid="selection-count">
+              {selectedCount} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="text-sm text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (

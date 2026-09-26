@@ -79,11 +79,18 @@ const FAILED_FIAT: BridgeTransactionData = {
 const ALL_TX = [CLAIMABLE, CLAIMABLE_2, PENDING_BRIDGE, CEX_WITHDRAWAL, FAILED_FIAT];
 
 function rowCheckbox(tx: BridgeTransactionData): HTMLElement {
-  return screen.getByRole("checkbox", { name: new RegExp(`Select .*${tx.amount} ${tx.asset}`) });
+  const typeLabel = {
+    "g-to-c": "G → C Bridge",
+    fiat: "Fiat Onramp",
+    cex: "CEX Withdrawal",
+  }[tx.type];
+  return screen.getByRole("checkbox", {
+    name: `Select ${typeLabel} of ${tx.amount} ${tx.asset}`,
+  });
 }
 
 describe("bulk row selection", () => {
-  it.skip("selects individual rows and shows a running count", () => {
+  it("selects individual rows and shows a running count", () => {
     render(<TransactionHistory transactions={ALL_TX} loading={false} network="TESTNET" />);
 
     expect(screen.queryByTestId("selection-count")).toBeNull();
