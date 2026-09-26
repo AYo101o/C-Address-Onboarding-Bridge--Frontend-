@@ -136,3 +136,9 @@ Issues #569 (`getRecommendedFee()`), #570 (`getEstimatedFeeXLM()`), #571 (`useCo
 ## License
 
 MIT
+
+## Note to maintainers
+- #638: `isValidHash` in `src/lib/confirmations.ts` already accepts 64-char hex hashes case-insensitively; only the `.skip` on its test remains.
+- #639: `buildAndSubmitPayment` already builds the operation for the selected asset via `resolveAsset` (native XLM or the matching trustline asset); only the tests are still skipped.
+- #640: `resolveAsset` already throws `No <CODE> trustline found` and never falls back to XLM; only the test is still skipped.
+- #641: `assertActiveAccountMatches` already names both the active Freighter account and the From address and passes when they match; only the tests are still skipped.
