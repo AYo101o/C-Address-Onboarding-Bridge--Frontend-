@@ -98,7 +98,7 @@ describe("inactivity timeout management", () => {
     expect(state.isTimedOut).toBe(true);
   });
 
-  it.skip("handles invalid stored activity time", () => {
+  it("handles invalid stored activity time", () => {
     localStorage.setItem(INACTIVITY_STORAGE_KEY, "invalid");
     const result = getLastActivityTime(NOW);
     expect(result).toBe(NOW);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { registerServiceWorker } from "@/lib/serviceWorker";
 
 /**
@@ -11,7 +11,12 @@ import { registerServiceWorker } from "@/lib/serviceWorker";
  * not break app boot. (#345)
  */
 export function ServiceWorkerRegistrar() {
+  const registered = useRef(false);
+
   useEffect(() => {
+    // Strict mode remounts effects; guard so we only register once.
+    if (registered.current) return;
+    registered.current = true;
     void registerServiceWorker();
   }, []);
 

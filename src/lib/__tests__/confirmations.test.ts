@@ -39,7 +39,7 @@ describe("confirmations", () => {
   });
 
   describe("toPublicConfirmation", () => {
-    it.skip("converts confirmation and truncates addresses", () => {
+    it("converts confirmation and truncates addresses", () => {
       const confirmation: TransactionConfirmation = {
         hash: SAMPLE_HASH,
         amount: "100",

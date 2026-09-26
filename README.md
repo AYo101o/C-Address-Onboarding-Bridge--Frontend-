@@ -138,6 +138,8 @@ Issues #569 (`getRecommendedFee()`), #570 (`getEstimatedFeeXLM()`), #571 (`useCo
 MIT
 
 ## Note to maintainers
+
+`getAccountMinimumBalance()` in `src/lib/stellar.ts` (#577) is already implemented on main (it returns the base reserve, `"1.0"`), so no code change was needed.
 - #638: `isValidHash` in `src/lib/confirmations.ts` already accepts 64-char hex hashes case-insensitively; only the `.skip` on its test remains.
 - #639: `buildAndSubmitPayment` already builds the operation for the selected asset via `resolveAsset` (native XLM or the matching trustline asset); only the tests are still skipped.
 - #640: `resolveAsset` already throws `No <CODE> trustline found` and never falls back to XLM; only the test is still skipped.
