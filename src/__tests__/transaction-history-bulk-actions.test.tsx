@@ -105,7 +105,7 @@ describe("bulk row selection", () => {
     expect(screen.queryByTestId("selection-count")).toBeNull();
   });
 
-  it.skip("select-all only affects the currently filtered rows", () => {
+  it("select-all only affects the currently filtered rows", () => {
     render(<TransactionHistory transactions={ALL_TX} loading={false} network="TESTNET" />);
 
     fireEvent.change(screen.getByLabelText("Filter by status"), { target: { value: "confirmed" } });
@@ -122,12 +122,12 @@ describe("bulk row selection", () => {
     expect(rowCheckbox(CLAIMABLE)).toBeChecked();
   });
 
-  it.skip("respects an active text search when selecting all", () => {
+  it("respects an active text search when selecting all", async () => {
     render(<TransactionHistory transactions={ALL_TX} loading={false} network="TESTNET" />);
 
     fireEvent.change(screen.getByLabelText("Search transactions"), { target: { value: "USDC" } });
     // USDC rows: CEX_WITHDRAWAL, FAILED_FIAT.
-    fireEvent.click(screen.getByLabelText(/Select all 2 filtered/i));
+    fireEvent.click(await screen.findByLabelText(/Select all 2 filtered/i));
     expect(screen.getByTestId("selection-count").textContent).toBe("2 selected");
   });
 });

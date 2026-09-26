@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState, useEffect } from "react";
+import React, { memo, useMemo, useState, useEffect, useRef } from "react";
 import { ArrowLeftRight, CreditCard, Building2, ExternalLink, Loader2, Copy, Check, X, Search } from "lucide-react";
 import type { BridgeTransactionData, BridgeTransactionStatus } from "@/lib/types";
 import { getExplorerUrl } from "@/lib/stellar";
@@ -298,7 +298,8 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
         const matchFrom = tx.fromAddress.toLowerCase().includes(q);
         const matchTo = tx.toAddress.toLowerCase().includes(q);
         const matchMemo = tx.memo?.toLowerCase().includes(q);
-        if (!matchHash && !matchFrom && !matchTo && !matchMemo) return false;
+        const matchAsset = tx.asset.toLowerCase().includes(q);
+        if (!matchHash && !matchFrom && !matchTo && !matchMemo && !matchAsset) return false;
       }
 
       if (statusFilter !== "all" && tx.status !== statusFilter) return false;
@@ -323,11 +324,34 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
     () => transactions.reduce((count, tx) => count + (selectedIds.has(tx.id) ? 1 : 0), 0),
     [transactions, selectedIds]
   );
+  const filteredIds = useMemo(() => filteredTransactions.map((tx) => tx.id), [filteredTransactions]);
+  const selectedFilteredCount = useMemo(
+    () => filteredIds.reduce((count, id) => count + (selectedIds.has(id) ? 1 : 0), 0),
+    [filteredIds, selectedIds]
+  );
+  const allFilteredSelected =
+    filteredIds.length > 0 && selectedFilteredCount === filteredIds.length;
+  const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someFilteredSelected;
+  }, [someFilteredSelected]);
+
   const toggleRow = (id: string) => {
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      filteredIds.forEach((id) => {
+        if (allFilteredSelected) next.delete(id);
+        else next.add(id);
+      });
       return next;
     });
   };
@@ -427,6 +451,22 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
             </button>
           )}
         </div>
+        {!loading && transactions.length > 0 && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={toggleSelectAllFiltered}
+              disabled={filteredIds.length === 0}
+              aria-label={`Select all ${filteredIds.length} filtered transactions`}
+              className="w-4 h-4 accent-[var(--primary)]"
+            />
+            <span className="text-[var(--text-muted)]">
+              Select all {filteredIds.length} filtered
+            </span>
+          </label>
+        )}
         {selectedCount > 0 && (
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium" data-testid="selection-count">
