@@ -7,22 +7,63 @@ on:
     branches: [main]
 
 jobs:
-  frontend:
-    name: Frontend build
+  lint-test-build:
+    name: Lint, Test & Build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # TODO(next-bounty): non-blocking. Every remaining advisory is transitive
+      # through @creit.tech/stellar-wallets-kit (which pulls the Solana wallet
+      # adapters) and @stellar/stellar-sdk, and clearing them needs major
+      # version bumps of both. Triage them deliberately, then drop this flag.
+      - name: Audit dependencies (advisory)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+      - name: Coverage report
+        run: npm run test -- --coverage
+        continue-on-error: true
       - run: npm run build
         env:
           ENFORCE_BUDGET: "true"
+
+  # Blocking. The specs in e2e/ are currently skipped (see the TODO at the top
+  # of e2e/funding-flow.spec.ts -- their selectors drifted while this job could
+  # not run), but the job still starts the app via Playwright's webServer, so a
+  # dev server that fails to boot -- as it did under Next 16 -- fails CI.
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        timeout-minutes: 10
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30

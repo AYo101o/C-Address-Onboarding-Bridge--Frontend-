@@ -1,13 +1,28 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { CreditCard, Wallet, ExternalLink, ArrowRight, Check, DollarSign, AlertCircle, HelpCircle, RefreshCw, Trophy } from "lucide-react";
+import LiveRegion from "@/components/live-region";
 import { isValidStellarAddress, isCAddress } from "@/lib/stellar";
+import {
+  compareOnrampQuotes,
+  quoteSpread,
+  formatQuoteAge,
+  formatQuoteFeeRate,
+  type OnrampQuoteComparison,
+} from "@/lib/onrampQuotes";
+import type { OnrampProvider } from "@/lib/types";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useHelp } from "@/contexts/HelpContext";
 
 const MOONPAY_API_KEY = process.env.NEXT_PUBLIC_MOONPAY_API_KEY || "";
 const TRANSAK_API_KEY = process.env.NEXT_PUBLIC_TRANSAK_API_KEY || "";
 
-const providers = [
+// Exported (in addition to the pure helpers below) so `src/lib/onrampQuotes.ts`
+// (#556) can compare providers without re-declaring this list — one source of
+// truth for id/name/fee/limits/currencies, same reasoning as exporting
+// getProviderFeeRate/calculateOnrampFeeAndReceive themselves.
+export const providers = [
   {
     id: "moonpay",
     name: "Moonpay",
@@ -43,7 +58,37 @@ export function calculateOnrampFeeAndReceive(amount: number, providerId: string)
   return { feeRate, fee, receive };
 }
 
-function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string): string {
+export function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmount: string, fiatCurrency: string = "USD"): string {
+  // Defence-in-depth: re-validate inputs independently of the button's
+  // disabled state / canProceed guard. These checks match the same validation
+  // logic used at the UI layer (isCAddress from @/lib/stellar and the same
+  // fiat-amount regex used for validAmount). If a future refactor removes or
+  // weakens the UI guard, this function will still refuse to build a URL with
+  // an invalid C-address or amount.
+  if (!isCAddress(cAddress)) {
+    throw new Error("Invalid C-address (must start with C, 56 characters, valid checksum).");
+  }
+  if (!/^\d+(\.\d{1,2})?$/.test(fiatAmount)) {
+    throw new Error("Invalid amount format.");
+  }
+  if (!p.currencies.includes(fiatCurrency)) {
+    throw new Error(`${p.name} does not support ${fiatCurrency}.`);
+  }
+
+  // Why URLSearchParams-based construction is safe from injection:
+  //   1. Value encoding: URLSearchParams percent-encodes every param value
+  //      (including &, =, #, ?, %, and all other non-unreserved characters),
+  //      so an attacker-controlled value can never break out of the
+  //      walletAddress= or amount= value slot and inject additional params.
+  //   2. Fixed key set: all param names (apiKey, walletAddress, currencyCode,
+  //      baseCurrencyAmount, baseCurrencyCode, network,
+  //      defaultCryptoCurrency, defaultFiatAmount, fiatCurrency) are string
+  //      literals in this file — user input is never used as a param key.
+  //   3. Fixed base URL: p.baseUrl comes from the `providers` array above —
+  //      hardcoded per-provider host literals — so the scheme + host are not
+  //      attacker-controlled.
+  // Combined with the isCAddress check above (which enforces a base32 alphabet
+  // that excludes &, =, # outright), this provides two layers of defence.
   const params =
     p.id === "moonpay"
       ? new URLSearchParams({
@@ -51,7 +96,7 @@ function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmo
           walletAddress: cAddress,
           currencyCode: "usdc_xlm",
           baseCurrencyAmount: fiatAmount,
-          baseCurrencyCode: "usd",
+          baseCurrencyCode: fiatCurrency.toLowerCase(),
         })
       : new URLSearchParams({
           apiKey: p.apiKey,
@@ -59,23 +104,196 @@ function buildProviderUrl(p: typeof providers[number], cAddress: string, fiatAmo
           network: "stellar",
           defaultCryptoCurrency: "USDC",
           defaultFiatAmount: fiatAmount,
-          fiatCurrency: "USD",
+          fiatCurrency: fiatCurrency,
         });
   return `${p.baseUrl}?${params}`;
 }
 
+const QUOTE_REFRESH_INTERVAL_MS = 30_000;
+
+/**
+ * Side-by-side provider comparison (#556). Purely additive to the existing
+ * form — `getProviderFeeRate`/`calculateOnrampFeeAndReceive` above still
+ * drive the single-provider "Estimated Output" box; this ranks all
+ * supported providers against each other for the same amount/currency.
+ *
+ * Live quotes are best-effort: `/api/onramp/quotes` degrades to `{ live: {} }`
+ * when no provider has a live-quote URL configured (see that route's docs),
+ * and a request that fails outright (network error, non-2xx, bad JSON) is
+ * treated the same way — `compareOnrampQuotes` always has its own estimate
+ * to fall back on, so a fetch failure never blanks the panel.
+ */
+function QuoteComparisonPanel({
+  fiatAmount,
+  fiatCurrency,
+  isValid,
+}: {
+  fiatAmount: string;
+  fiatCurrency: string;
+  isValid: boolean;
+}) {
+  const [comparisons, setComparisons] = useState<OnrampQuoteComparison[]>([]);
+  const [quotedAt, setQuotedAt] = useState<number | null>(null);
+  const [, forceTick] = useState(0);
+  const requestIdRef = useRef(0);
+
+  const amount = Number(fiatAmount) || 0;
+
+  const refresh = useCallback(async () => {
+    if (!isValid || amount <= 0) {
+      setComparisons([]);
+      setQuotedAt(null);
+      return;
+    }
+    const requestId = ++requestIdRef.current;
+    // Local estimate first, synchronously, so the panel never shows nothing
+    // while the (optional) live fetch is in flight.
+    setComparisons(compareOnrampQuotes(amount, fiatCurrency));
+    setQuotedAt(Date.now());
+
+    try {
+      const res = await fetch(`/api/onramp/quotes?amount=${encodeURIComponent(String(amount))}&currency=${encodeURIComponent(fiatCurrency)}`);
+      if (!res.ok) return;
+      const data: unknown = await res.json();
+      // A slower response for a superseded amount/currency must not clobber
+      // a newer one that already resolved.
+      if (requestId !== requestIdRef.current) return;
+      const live = (data as { live?: Partial<Record<OnrampProvider, { sourceAmount: string; destinationAmount: string; fee: string }>> }).live ?? {};
+      setComparisons(compareOnrampQuotes(amount, fiatCurrency, { liveQuotes: live }));
+      setQuotedAt(Date.now());
+    } catch {
+      // Network failure: the local-estimate comparison set above stands.
+    }
+  }, [amount, fiatCurrency, isValid]);
+
+  useEffect(() => {
+    // Fetch-on-mount/-change, same justified pattern as AddressBookPage's
+    // load effect: synchronizing the panel with the external quote source
+    // (the local estimator + /api/onramp/quotes) whenever amount/currency
+    // change, not deriving state from a render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refresh();
+  }, [refresh]);
+
+  // Timed refresh while a valid amount is entered, plus a 1s tick so the
+  // "quoted Xs ago" age display stays live between refreshes.
+  useEffect(() => {
+    if (!isValid || amount <= 0) return;
+    const refreshTimer = setInterval(refresh, QUOTE_REFRESH_INTERVAL_MS);
+    const tickTimer = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => {
+      clearInterval(refreshTimer);
+      clearInterval(tickTimer);
+    };
+  }, [refresh, isValid, amount]);
+
+  if (!isValid || amount <= 0) return null;
+
+  const spread = quoteSpread(comparisons);
+
+  return (
+    <div className="card p-5" data-testid="quote-comparison-panel">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold">Compare Providers</h3>
+        <button
+          type="button"
+          onClick={refresh}
+          aria-label="Refresh quotes"
+          data-testid="quote-refresh-button"
+          className="p-1.5 rounded hover:bg-[var(--surface-2)] text-[var(--text-muted)] transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {comparisons.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)]">
+          No provider currently supports {fiatCurrency} for this comparison.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-2" data-testid="quote-comparison-list">
+            {comparisons.map((q) => (
+              <li
+                key={q.provider}
+                data-testid={`quote-row-${q.provider}`}
+                className={`p-3 rounded-lg border ${
+                  q.isBest ? "border-[var(--primary)] bg-[var(--primary)]/5" : "border-[var(--border)] bg-[var(--surface-2)]"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-sm font-medium flex items-center gap-1.5">
+                    {q.isBest && <Trophy className="w-3.5 h-3.5 text-[var(--primary)]" aria-hidden="true" />}
+                    {q.providerName}
+                    {q.isBest && <span className="sr-only"> — best rate</span>}
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {q.source === "live" ? "Live" : "Estimated"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-[var(--text-muted)]">
+                  <span>Rate ({formatQuoteFeeRate(q.provider)} fee)</span>
+                  <span className="tabular-nums">-{q.fee} {q.fiatCurrency}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold mt-1">
+                  <span className="text-[var(--text-muted)] font-normal text-xs self-center">You receive</span>
+                  <span className="tabular-nums">{q.destinationAmount} USDC</span>
+                </div>
+                {q.withinLimits === false && (
+                  <p className="text-xs text-[var(--error)] mt-1" role="alert">
+                    Outside {q.providerName}&apos;s advertised limits for this amount.
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          {spread && (
+            <p className="text-xs text-[var(--text-muted)] mt-3" data-testid="quote-spread">
+              Best vs. worst: {spread.absolute.toFixed(2)} USDC ({spread.percent.toFixed(1)}%) apart.
+            </p>
+          )}
+          {quotedAt && (
+            <p className="text-xs text-[var(--text-muted)] mt-1" data-testid="quote-age">
+              Quoted {formatQuoteAge(quotedAt)}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function OnrampPage() {
+  const { openHelp } = useHelp();
   const [cAddress, setCAddress] = useState("");
   const [fiatAmount, setFiatAmount] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("moonpay");
+  const [fiatCurrency, setFiatCurrency] = useState("USD");
   const [step, setStep] = useState<"form" | "redirect">("form");
   const [error, setError] = useState<string | null>(null);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   const provider = providers.find((p) => p.id === selectedProvider);
-  const validAddress = !cAddress || (isValidStellarAddress(cAddress) && isCAddress(cAddress));
-  const validAmount = !fiatAmount || /^\d+(\.\d{1,2})?$/.test(fiatAmount);
-  const canProceed = cAddress && fiatAmount && validAddress && validAmount;
+  // Each provider supports its own currency set (see `providers` above); switching
+  // provider while a currency the new provider doesn't support is selected would
+  // otherwise silently build a redirect URL for a currency never shown to the user.
+  const handleProviderSelect = (id: string) => {
+    setSelectedProvider(id);
+    setError(null);
+    const next = providers.find((p) => p.id === id);
+    if (next && !next.currencies.includes(fiatCurrency)) {
+      setFiatCurrency(next.currencies[0]);
+    }
+  };
+  // Debounce address and amount validation to avoid running expensive
+  // StrKey checks on every keystroke — validation fires 300 ms after the
+  // user stops typing instead of on every character change.
+  const debouncedCAddress = useDebounce(cAddress, 300);
+  const debouncedFiatAmount = useDebounce(fiatAmount, 300);
+  const validAddress = !debouncedCAddress || (isValidStellarAddress(debouncedCAddress) && isCAddress(debouncedCAddress));
+  const validAmount = !debouncedFiatAmount || /^\d+(\.\d{1,2})?$/.test(debouncedFiatAmount);
+  const canProceed = cAddress && fiatAmount && validAddress && validAmount && debouncedCAddress === cAddress && debouncedFiatAmount === fiatAmount;
 
   const { fee: feeAmount, receive: receiveAmount } = calculateOnrampFeeAndReceive(
     Number(fiatAmount) || 0,
@@ -93,12 +311,21 @@ export default function OnrampPage() {
       return;
     }
 
-    const url = buildProviderUrl(provider, cAddress, fiatAmount);
-    setRedirectUrl(url);
-    setStep("redirect");
-    // Open synchronously within the click handler to preserve user activation
-    // so default popup blockers do not block the new tab.
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const url = buildProviderUrl(provider, cAddress, fiatAmount, fiatCurrency);
+      setRedirectUrl(url);
+      setStep("redirect");
+      // Open synchronously within the click handler to preserve user activation
+      // so default popup blockers do not block the new tab.
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Failed to build onramp redirect URL:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to prepare provider redirect. Please double-check your input and try again."
+      );
+    }
   };
 
   return (
@@ -113,15 +340,31 @@ export default function OnrampPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="card p-6">
+            {/* Pressing Continue swaps the whole form for the redirect panel and
+                opens a new tab. Focus stays where it was, so an AT user gets no
+                signal that either happened — the region announces the outcome.
+                Mounted outside the step branches so it is already registered
+                when the step flips. */}
+            <LiveRegion
+              message={
+                step === "redirect"
+                  ? `Opened a new tab to complete your purchase with ${provider?.name ?? "the provider"}.`
+                  : ""
+              }
+            />
             {step === "form" && (
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium mb-3">Select Provider</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Single column on phones: at ~320px two provider cards left the
+                      name, description and fee/limit rows overlapping their own
+                      borders. (#341) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {providers.map((p) => (
                       <button
                         key={p.id}
-                        onClick={() => { setSelectedProvider(p.id); setError(null); }}
+                        type="button"
+                        onClick={() => handleProviderSelect(p.id)}
                         aria-pressed={selectedProvider === p.id}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           selectedProvider === p.id
@@ -129,16 +372,18 @@ export default function OnrampPage() {
                             : "border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)]"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold">{p.name}</span>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="font-semibold truncate">{p.name}</span>
                           {selectedProvider === p.id && (
-                            <Check className="w-4 h-4 text-[var(--primary)]" />
+                            <Check className="w-4 h-4 shrink-0 text-[var(--primary)]" />
                           )}
                         </div>
                         <p className="text-xs text-[var(--text-muted)] mb-1">{p.description}</p>
-                        <div className="flex gap-2 text-xs text-[var(--text-muted)]">
+                        {/* Wrap instead of overflowing: "$15 - $25,000" does not fit
+                            beside the fee on a narrow card. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
                           <span>Fee: {p.fee}</span>
-                          <span>•</span>
+                          <span aria-hidden="true">•</span>
                           <span>{p.limits}</span>
                         </div>
                       </button>
@@ -147,54 +392,78 @@ export default function OnrampPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Destination C-Address</label>
+                  <label htmlFor="onramp-c-address" className="block text-sm font-medium mb-2">Destination C-Address</label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
-                      type="text"
-                      value={cAddress}
-                      onChange={(e) => setCAddress(e.target.value)}
-                      placeholder="CABC...DEF"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
-                    />
-                  </div>
-                  {!validAddress && cAddress && (
-                    <p className="text-xs text-[var(--error)] mt-1">Invalid C-address (must start with C, 56 characters)</p>
-                  )}
+                       id="onramp-c-address"
+                       type="text"
+                       autoComplete="off"
+                       value={cAddress}
+                       onChange={(e) => setCAddress(e.target.value)}
+                       placeholder="CABC...DEF"
+                       aria-invalid={!validAddress && !!cAddress}
+                       aria-describedby={!validAddress && cAddress ? "c-address-error" : undefined}
+                       className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--primary)] transition-colors"
+                     />
+                   </div>
+                   {!validAddress && debouncedCAddress && (
+                     <p id="c-address-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid C-address (must start with C, 56 characters)</p>
+                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount (USD)</label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
-                    <input
-                      type="text"
-                      value={fiatAmount}
-                      onChange={(e) => setFiatAmount(e.target.value)}
-                      placeholder="100.00"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
-                    />
-                  </div>
-                  {!validAmount && fiatAmount && (
-                    <p className="text-xs text-[var(--error)] mt-1">Invalid amount format</p>
-                  )}
+                  <label htmlFor="onramp-fiat-amount" className="block text-sm font-medium mb-2">Amount</label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+                      <input
+                         id="onramp-fiat-amount"
+                         type="text"
+                         value={fiatAmount}
+                         onChange={(e) => setFiatAmount(e.target.value)}
+                         placeholder="100.00"
+                         aria-invalid={!validAmount && !!fiatAmount}
+                         aria-describedby={!validAmount && fiatAmount ? "fiat-amount-error" : undefined}
+                         className="w-full pl-10 pr-4 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                       />
+                     </div>
+                     <select
+                       id="onramp-fiat-currency"
+                       value={fiatCurrency}
+                       onChange={(e) => setFiatCurrency(e.target.value)}
+                       aria-label="Currency"
+                       className="px-3 py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--primary)] transition-colors"
+                     >
+                       {(provider?.currencies ?? []).map((c) => (
+                         <option key={c} value={c}>{c}</option>
+                       ))}
+                     </select>
+                   </div>
+                   {!validAmount && debouncedFiatAmount && (
+                     <p id="fiat-amount-error" className="text-xs text-[var(--error)] mt-1" role="alert">Invalid amount format</p>
+                   )}
                 </div>
 
+                {/* Every row is label + value with the label pinned and the value
+                    allowed to shrink/wrap. Previously a long amount (the field is
+                    free text) grew the row past the card edge because flex items
+                    do not shrink below their content width by default. (#341) */}
                 <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
                   <h4 className="text-sm font-medium mb-2">Estimated Output</h4>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[var(--text-muted)]">You pay</span>
-                    <span>${fiatAmount || "0"} USD</span>
+                  <div className="flex justify-between items-baseline gap-3 text-sm">
+                    <span className="shrink-0 text-[var(--text-muted)]">You pay</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">${fiatAmount || "0"} {fiatCurrency}</span>
                   </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-[var(--text-muted)]">Fee ({provider?.fee})</span>
-                    <span>
-                      -${fiatAmount ? feeAmount.toFixed(2) : "0"}
+                  <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
+                    <span className="shrink-0 text-[var(--text-muted)]">Fee ({provider?.fee})</span>
+                    <span className="min-w-0 text-right break-all tabular-nums">
+                      -${fiatAmount && validAmount ? feeAmount.toFixed(2) : "0"}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-[var(--text-muted)]">Est. receive</span>
-                    <span className="font-semibold">
+                  <div className="flex justify-between items-baseline gap-3 text-sm mt-1">
+                    <span className="shrink-0 text-[var(--text-muted)]">Est. receive</span>
+                    <span className="min-w-0 text-right break-all tabular-nums font-semibold">
                       {fiatAmount && validAmount
                         ? `~${receiveAmount.toFixed(2)} USDC`
                         : "—"}
@@ -202,20 +471,29 @@ export default function OnrampPage() {
                   </div>
                 </div>
 
+                {/* Raised by the Continue click (missing API key, or a failure
+                    while building the redirect URL) and rendered below the
+                    button the user just pressed, so nothing about it is
+                    self-evident to AT: role="alert" is what makes the failure
+                    reach the user who cannot see it. */}
                 {error && (
-                  <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
+                  <div
+                    role="alert"
+                    className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3"
+                  >
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-[var(--error)]">{error}</p>
                   </div>
                 )}
 
                 <button
+                  type="button"
                   onClick={handleProviderRedirect}
                   disabled={!canProceed}
                   className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CreditCard className="w-4 h-4" />
-                  Continue with {provider?.name}
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Continue with {provider?.name}</span>
                 </button>
               </div>
             )}
@@ -234,14 +512,15 @@ export default function OnrampPage() {
                     href={redirectUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
+                    className="inline-flex items-start gap-1 text-sm text-[var(--primary-light)] hover:underline mb-4"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Checkout didn&apos;t open? Continue to {provider?.name}
+                    <ExternalLink className="w-3 h-3 shrink-0 mt-1" />
+                    <span>Checkout didn&apos;t open? Continue to {provider?.name}</span>
                   </a>
                 )}
                 <div className="mt-4">
                   <button
+                    type="button"
                     onClick={() => { setStep("form"); setRedirectUrl(null); }}
                     className="text-sm text-[var(--primary-light)] hover:underline"
                   >
@@ -254,14 +533,20 @@ export default function OnrampPage() {
         </div>
 
         <div className="space-y-4">
+          <QuoteComparisonPanel
+            fiatAmount={debouncedFiatAmount}
+            fiatCurrency={fiatCurrency}
+            isValid={validAmount && debouncedFiatAmount === fiatAmount}
+          />
+
           <div className="card p-5">
             <h3 className="font-semibold mb-3">Supported Providers</h3>
             <div className="space-y-3">
               {providers.map((p) => (
                 <div key={p.id} className="p-3 rounded-lg bg-[var(--surface-2)]">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm">{p.name}</span>
-                    {selectedProvider === p.id && <Check className="w-4 h-4 text-[var(--primary)]" />}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-medium text-sm truncate">{p.name}</span>
+                    {selectedProvider === p.id && <Check className="w-4 h-4 shrink-0 text-[var(--primary)]" />}
                   </div>
                   <p className="text-xs text-[var(--text-muted)]">{p.description}</p>
                 </div>
@@ -296,15 +581,14 @@ export default function OnrampPage() {
             <p className="text-sm text-[var(--text-muted)] mb-3">
               Make sure your C-address is valid before continuing.
             </p>
-            <a
-              href="https://developers.stellar.org/docs/build/smart-contracts"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={openHelp}
               className="inline-flex items-center gap-2 text-sm text-[var(--primary-light)] hover:underline"
             >
-              Learn about Soroban addresses
-              <ArrowRight className="w-4 h-4" />
-            </a>
+              <HelpCircle className="w-4 h-4" />
+              Open help centre
+            </button>
           </div>
         </div>
       </div>

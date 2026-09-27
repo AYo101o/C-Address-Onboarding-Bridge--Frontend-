@@ -1,5 +1,16 @@
+/** Distinguishes a classic G-address from a Soroban C-address. */
 export type AddressType = "G" | "C";
 
+/** Returns the address type prefix character for a given address. */
+export function getAddressType(address: string): AddressType | null {
+  if (!address) return null;
+  const prefix = address.charAt(0).toUpperCase();
+  if (prefix === "G") return "G";
+  if (prefix === "C") return "C";
+  return null;
+}
+
+/** Wallet connection state, including the resolved address and network. */
 export interface WalletState {
   address: string | null;
   publicKey: string | null;
@@ -7,41 +18,73 @@ export interface WalletState {
   isConnected: boolean;
 }
 
+/**
+ * Lifecycle state of a bridge transaction.
+ *
+ * Named rather than inlined so every producer and consumer references one
+ * cached union instead of re-declaring (and making the checker re-instantiate)
+ * a structurally identical anonymous one. It also means adding a state is a
+ * one-line change that the compiler propagates everywhere. (#346)
+ */
+export type BridgeTransactionStatus = "pending" | "confirmed" | "failed";
+
+/** How funds reached the destination C-address. */
+export type BridgeTransactionKind = "g-to-c" | "fiat" | "cex";
+
+/** Fiat on-ramp providers the app can quote against. */
+export type OnrampProvider = "moonpay" | "transak";
+
+/** Narrows an OnrampProvider to a string the UI can display. */
+export function isOnrampProvider(value: unknown): value is OnrampProvider {
+  return value === "moonpay" || value === "transak";
+}
+
+/** A recorded bridge transaction with its current lifecycle state. */
 export interface BridgeTransactionData {
   id: string;
   fromAddress: string;
   toAddress: string;
   amount: string;
   asset: string;
-  status: "pending" | "confirmed" | "failed";
+  status: BridgeTransactionStatus;
   timestamp: number;
-  type: "g-to-c" | "fiat" | "cex";
+  type: BridgeTransactionKind;
   hash?: string;
   memo?: string;
 }
 
+/** Narrows a transaction status to the terminal states (confirmed or failed). */
+export function isTerminalStatus(
+  status: BridgeTransactionStatus
+): status is "confirmed" | "failed" {
+  return status === "confirmed" || status === "failed";
+}
+
+/** An asset balance for a Stellar account. */
 export interface Balance {
   asset: string;
   amount: string;
   contractId?: string;
 }
 
+/** A fiat-to-crypto quote returned by an on-ramp provider. */
 export interface OnrampQuote {
   sourceAmount: string;
   destinationAmount: string;
   fee: string;
-  provider: "moonpay" | "transak";
+  provider: OnrampProvider;
   fiatCurrency: string;
   cryptoCurrency: string;
 }
 
+/** Configuration for a centralised exchange shown on the /cex route. */
 export interface CexConfig {
-  name: string;
-  logo: string;
-  supportedNetworks: string[];
-  minWithdrawal: string;
-  fee: string;
-  withdrawalUrl: string;
+  readonly name: string;
+  readonly logo: string;
+  readonly supportedNetworks: readonly string[];
+  readonly minWithdrawal: string;
+  readonly fee: string;
+  readonly withdrawalUrl: string;
 }
 
 export const STELLAR_NETWORK = {
@@ -51,6 +94,33 @@ export const STELLAR_NETWORK = {
 
 /** The set of supported Stellar network identifiers. */
 export type StellarNetwork = keyof typeof STELLAR_NETWORK;
+
+/**
+ * The networks this app is able to transact on. Alias of {@link StellarNetwork},
+ * kept as a distinct name because it reads more clearly next to
+ * {@link WalletNetworkState}, where "the app's networks" and "whatever the
+ * wallet happens to be on" are genuinely different sets. (#289)
+ */
+export type AppNetwork = StellarNetwork;
+
+/**
+ * Everything the wallet's network can actually be, from the app's point of view:
+ *
+ * - `"PUBLIC"` / `"TESTNET"` — a network the app supports
+ * - `"UNSUPPORTED"` — the wallet reported a real network the app can't use
+ *   (Futurenet, Standalone, a custom passphrase…)
+ * - `"UNKNOWN"` — the network could not be read from the wallet at all
+ *
+ * The last two must stay distinct from `"TESTNET"`: coercing them silently made
+ * a Futurenet wallet look like a genuine testnet session, so the app queried the
+ * wrong Horizon and built transactions with the wrong passphrase. (#289)
+ */
+export type WalletNetworkState = AppNetwork | "UNSUPPORTED" | "UNKNOWN";
+
+/** Narrows a wallet network state to one the app can build transactions on. */
+export function isSupportedNetwork(state: WalletNetworkState): state is AppNetwork {
+  return state === "PUBLIC" || state === "TESTNET";
+}
 
 // SDF does not operate a free public mainnet Soroban RPC, so PUBLIC must be
 // configured explicitly; getSorobanRpcServer throws a clear error if it's
@@ -69,6 +139,18 @@ export const HORIZON_URL = {
 export const BRIDGE_CONTRACT_ID = process.env.NEXT_PUBLIC_BRIDGE_CONTRACT_ID || "";
 
 /**
+ * Maximum number of recipients accepted in a single batch_fund_c_address
+ * call (#465).
+ *
+ * TODO: this is a placeholder. This repo does not vendor the batch contract
+ * source or the batch API client, and no existing constant defines the real
+ * cap — replace this with the actual contract/API limit once it's available,
+ * and update the UI copy that references it (currently derived from this
+ * constant, so no other change should be needed).
+ */
+export const MAX_BATCH_RECIPIENTS = 25;
+
+/**
  * The Stellar network the app connects to. Driven by the `NEXT_PUBLIC_STELLAR_NETWORK`
  * environment variable. Any value other than `"PUBLIC"` (exact, case-sensitive)
  * falls back to `"TESTNET"` so misconfigured deployments never silently send
@@ -81,7 +163,16 @@ export const BRIDGE_CONTRACT_ID = process.env.NEXT_PUBLIC_BRIDGE_CONTRACT_ID || 
 export const APP_NETWORK: "PUBLIC" | "TESTNET" =
   process.env.NEXT_PUBLIC_STELLAR_NETWORK === "PUBLIC" ? "PUBLIC" : "TESTNET";
 
-export const CEX_LIST: CexConfig[] = [
+/**
+ * The exchanges shown on /cex.
+ *
+ * `as const satisfies` rather than a `: CexConfig[]` annotation: the shape is
+ * still checked against {@link CexConfig}, but the literal types survive, so
+ * `CEX_LIST[0].name` is `"Binance"` instead of `string`, and the whole
+ * structure is frozen at the type level — no widening pass, no accidental
+ * `CEX_LIST.push(...)` from a component. (#346)
+ */
+export const CEX_LIST = [
   {
     name: "Binance",
     logo: "/cex/binance.svg",
@@ -106,4 +197,4 @@ export const CEX_LIST: CexConfig[] = [
     fee: "0.15 USDC",
     withdrawalUrl: "https://www.kraken.com/withdraw",
   },
-];
+] as const satisfies readonly CexConfig[];
