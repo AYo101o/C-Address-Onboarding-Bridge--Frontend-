@@ -28,6 +28,13 @@ const FROM_ADDRESS = vi.hoisted(() => "G" + "A".repeat(55));
 const RECIPIENT_1 = "C" + "B".repeat(55);
 const RECIPIENT_2 = "C" + "C".repeat(55);
 
+// The lock/claims feature is behind the locked_transfers flag (#672), off by
+// default; this file doesn't exercise it, so the mocked value doesn't matter
+// beyond satisfying the provider requirement.
+vi.mock("@/contexts/FeatureFlagContext", () => ({
+  useFeatureFlag: () => false,
+}));
+
 vi.mock("@/components/wallet-provider", () => ({
   useWallet: () => ({
     isConnected: true,

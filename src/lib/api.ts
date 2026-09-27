@@ -9,6 +9,7 @@ import type { FeeTierStatus } from "./feeTiers";
 // API type from lib.dom, so every lock field access failed to typecheck.
 import type { Lock } from "./locks";
 import type { ReferralStats } from "./referrals";
+import type { ClaimProof } from "./stellar";
 
 type ServiceState = 'up' | 'down' | 'degraded';
 type CircuitState = 'closed' | 'open' | 'half-open';
@@ -294,17 +295,34 @@ export async function listIncomingLocks(recipient: string, network: StellarNetwo
 }
 
 /**
- * Claims a matured lock on behalf of `claimant`. Throws
- * {@link LockAlreadyClaimedError} on a 409 response — the shape of
+ * Claims a matured lock on behalf of `claimant`. `proof` — a wallet-signed
+ * challenge from `signClaimProof` in src/lib/stellar.ts — establishes that
+ * the caller actually controls `claimant`; the previous version sent only
+ * `{ claimant, network }`, an unauthenticated claim anyone could submit for
+ * any address (#672). The exact proof fields the backend expects are a best
+ * guess pending the real API (see signClaimProof's own doc comment).
+ *
+ * Throws {@link LockAlreadyClaimedError} on a 409 response — the shape of
  * "someone else (or another session) already claimed this" — so callers can
  * distinguish it from a generic failure and reconcile their view instead of
  * just showing a retryable error.
  */
-export async function claimLock(lockId: string, claimant: string, network: StellarNetwork): Promise<Lock> {
+export async function claimLock(
+  lockId: string,
+  claimant: string,
+  network: StellarNetwork,
+  proof: ClaimProof
+): Promise<Lock> {
   const response = await fetch(`${API_BASE_URL}/locks/${encodeURIComponent(lockId)}/claim`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claimant, network }),
+    body: JSON.stringify({
+      claimant,
+      network,
+      message: proof.message,
+      signature: proof.signature,
+      signerAddress: proof.signerAddress,
+    }),
   });
 
   if (response.status === 409) {

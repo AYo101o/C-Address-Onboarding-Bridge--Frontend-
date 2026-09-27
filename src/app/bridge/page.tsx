@@ -12,6 +12,7 @@ import { useStepTransition } from "@/hooks/useStepTransition";
 import LiveRegion from "@/components/live-region";
 import BatchFundingForm from "@/components/BatchFundingForm";
 import { useHelp } from "@/contexts/HelpContext";
+import { useFeatureFlag } from "@/contexts/FeatureFlagContext";
 import type { FeeTierStatus } from "@/lib/feeTiers";
 import FeeTierDisplay from "@/components/fee-tier-display";
 import { addNotification } from "@/lib/notifications";
@@ -115,6 +116,10 @@ export default function BridgePage() {
     connect,
   } = useWallet();
   const { openHelp } = useHelp();
+  // Locked transfers/claims call /locks routes that don't exist on the
+  // backend yet, and claiming sent nothing proving the caller controls the
+  // claimant account — hidden until both are resolved. (#672)
+  const lockedTransfersEnabled = useFeatureFlag("locked_transfers");
   // The source is always Freighter's connected account, never free text.
   // Freighter signs with its active account regardless of what the transaction
   // names as its source, so any other value could only ever produce a
@@ -733,48 +738,50 @@ export default function BridgePage() {
                   )}
                 </div>
 
-                <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isLocked}
-                      onChange={(e) => setIsLocked(e.target.checked)}
-                      disabled={txStatus !== "idle"}
-                      data-testid="lock-toggle"
-                      className="w-4 h-4 rounded border-[var(--border)] accent-[var(--primary)]"
-                    />
-                    <span className="text-sm font-medium inline-flex items-center gap-1.5">
-                      <LockIcon className="w-3.5 h-3.5" />
-                      Lock until a future date
-                    </span>
-                  </label>
-                  <p className="text-xs text-[var(--text-muted)] mt-1 ml-7">
-                    Optional — instead of sending instantly, the recipient can claim this once the
-                    unlock time passes. Manage incoming locks from the Dashboard.
-                  </p>
-                  {isLocked && (
-                    <div className="mt-3 ml-7">
-                      <label htmlFor="unlock-at" className="block text-xs text-[var(--text-muted)] mb-1">
-                        Unlock date &amp; time
-                      </label>
+                {lockedTransfersEnabled && (
+                  <div className="p-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                    <label className="flex items-center gap-3 cursor-pointer">
                       <input
-                        id="unlock-at"
-                        type="datetime-local"
-                        value={unlockAt}
-                        onChange={(e) => setUnlockAt(e.target.value)}
+                        type="checkbox"
+                        checked={isLocked}
+                        onChange={(e) => setIsLocked(e.target.checked)}
                         disabled={txStatus !== "idle"}
-                        aria-invalid={!!unlockAt && unlockValidation?.ok === false}
-                        aria-describedby={unlockAt && unlockValidation?.ok === false ? "unlock-at-error" : undefined}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus:border-[var(--primary)] transition-colors"
+                        data-testid="lock-toggle"
+                        className="w-4 h-4 rounded border-[var(--border)] accent-[var(--primary)]"
                       />
-                      {unlockAt && unlockValidation?.ok === false && (
-                        <p id="unlock-at-error" className="text-xs text-[var(--error)] mt-1" role="alert">
-                          {unlockValidation.error}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                      <span className="text-sm font-medium inline-flex items-center gap-1.5">
+                        <LockIcon className="w-3.5 h-3.5" />
+                        Lock until a future date
+                      </span>
+                    </label>
+                    <p className="text-xs text-[var(--text-muted)] mt-1 ml-7">
+                      Optional — instead of sending instantly, the recipient can claim this once the
+                      unlock time passes. Manage incoming locks from the Dashboard.
+                    </p>
+                    {isLocked && (
+                      <div className="mt-3 ml-7">
+                        <label htmlFor="unlock-at" className="block text-xs text-[var(--text-muted)] mb-1">
+                          Unlock date &amp; time
+                        </label>
+                        <input
+                          id="unlock-at"
+                          type="datetime-local"
+                          value={unlockAt}
+                          onChange={(e) => setUnlockAt(e.target.value)}
+                          disabled={txStatus !== "idle"}
+                          aria-invalid={!!unlockAt && unlockValidation?.ok === false}
+                          aria-describedby={unlockAt && unlockValidation?.ok === false ? "unlock-at-error" : undefined}
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus:border-[var(--primary)] transition-colors"
+                        />
+                        {unlockAt && unlockValidation?.ok === false && (
+                          <p id="unlock-at-error" className="text-xs text-[var(--error)] mt-1" role="alert">
+                            {unlockValidation.error}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {!isLocked && bridgingBlocked && (
                   <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">

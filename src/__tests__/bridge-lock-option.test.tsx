@@ -21,6 +21,12 @@ const VALID_C_ADDRESS = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC
 // hit the TDZ) — see vi.hoisted's own docs for why.
 const FROM_ADDRESS = vi.hoisted(() => "G" + "A".repeat(55));
 
+// This file specifically exercises the lock UI, which is hidden behind the
+// locked_transfers flag by default (#672) — force it on.
+vi.mock("@/contexts/FeatureFlagContext", () => ({
+  useFeatureFlag: () => true,
+}));
+
 vi.mock("@/components/wallet-provider", () => ({
   useWallet: () => ({
     isConnected: true,

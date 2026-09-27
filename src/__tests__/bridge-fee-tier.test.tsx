@@ -19,6 +19,13 @@ import type { FeeTierStatus } from "@/lib/feeTiers";
 const VALID_C_ADDRESS = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 const FROM_ADDRESS = vi.hoisted(() => "G" + "A".repeat(55));
 
+// The lock/claims feature is behind the locked_transfers flag (#672), off by
+// default; this file doesn't exercise it, so the mocked value doesn't matter
+// beyond satisfying the provider requirement.
+vi.mock("@/contexts/FeatureFlagContext", () => ({
+  useFeatureFlag: () => false,
+}));
+
 vi.mock("@/components/wallet-provider", () => ({
   useWallet: () => ({
     isConnected: true,

@@ -964,6 +964,50 @@ export async function signPreparedTransaction(unsignedXdr: string, network: Stel
   return signedXDR;
 }
 
+export interface ClaimProof {
+  message: string;
+  signature: string;
+  signerAddress?: string;
+}
+
+/**
+ * Signs a one-time challenge proving the connected wallet controls
+ * `claimant`, for attaching to a lock-claim request (#672).
+ *
+ * PLACEHOLDER SCHEME: the real /locks API this pairs with doesn't exist yet
+ * (see src/lib/api.ts's claimLock), so there's no confirmed message format
+ * or verification method to match. This signs a plain, human-readable
+ * challenge via the wallet kit's SEP-53-style signMessage — a real signature
+ * over a real message, so a false claim can't be forged, but the exact
+ * message format and signature encoding must be reconciled against
+ * whatever the backend actually verifies once that's designed. Under the
+ * e2e test hook (#669), signs directly with the disposable keypair via
+ * Keypair.sign rather than going through the kit's signMessage.
+ */
+export async function signClaimProof(claimant: string, lockId: string, network: StellarNetwork): Promise<ClaimProof> {
+  const message = `Claim lock ${lockId} as ${claimant} on ${network} at ${Date.now()}`;
+  const e2eWallet = e2eWalletConfig();
+
+  if (e2eWallet) {
+    if (e2eWallet.shouldRejectSign) {
+      throw new Error("User declined access");
+    }
+    const signature = Keypair.fromSecret(e2eWallet.secret)
+      .sign(Buffer.from(message, "utf-8"))
+      .toString("base64");
+    return { message, signature, signerAddress: e2eWallet.address };
+  }
+
+  const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit/sdk");
+  const result = await StellarWalletsKit.signMessage(message, { address: claimant });
+  if (typeof result.signedMessage !== "string" || !result.signedMessage) {
+    throw new Error(
+      "Wallet returned an unexpected response while signing — the signed message is missing or empty."
+    );
+  }
+  return { message, signature: result.signedMessage, signerAddress: result.signerAddress };
+}
+
 /**
  * Builds a URL to view a transaction, account, or contract on stellar.expert.
  *
