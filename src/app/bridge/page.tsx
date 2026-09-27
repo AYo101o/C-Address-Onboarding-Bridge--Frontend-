@@ -3,15 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, Wallet, Send, ArrowRight, Check, AlertCircle, Loader2, ExternalLink, HelpCircle, Lock as LockIcon } from "lucide-react";
 import { useWallet } from "@/components/wallet-provider";
-import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM, toSafeErrorMessage, shouldWarnOnMainnetAction } from "@/lib/stellar";
+import { isValidStellarAddress, isCAddress, isValidStellarAmount, bridgeViaContract, getExplorerUrl, getAccountBalances, getAccountMinimumBalance, formatNetworkLabel, getEstimatedFeeXLM, toSafeErrorMessage, shouldWarnOnMainnetAction, assertActiveAccountMatches, signPreparedTransaction } from "@/lib/stellar";
 import type { AccountBalances, SimulationResult } from "@/lib/stellar";
-import { createLock, getFeeTierPreview } from "@/lib/api";
+import { createLock, getFeeTierPreview, prepareBatchFunding, submitSignedBatchFunding } from "@/lib/api";
 import { validateUnlockTime, type Lock as LockRecord } from "@/lib/locks";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useStepTransition } from "@/hooks/useStepTransition";
 import LiveRegion from "@/components/live-region";
 import BatchFundingForm from "@/components/BatchFundingForm";
-import { submitBatchFunding } from "@/lib/api";
 import { useHelp } from "@/contexts/HelpContext";
 import type { FeeTierStatus } from "@/lib/feeTiers";
 import FeeTierDisplay from "@/components/fee-tier-display";
@@ -420,9 +419,10 @@ export default function BridgePage() {
     setLockResult(null);
   };
 
-  // Batch funding submits through the API's batch endpoint (which invokes the
-  // contract's batch_fund_c_address), not through a Freighter-signed classic
-  // payment repeated per recipient — see issue #465.
+  // Batch funding invokes the contract's batch_fund_c_address, which moves
+  // the connected wallet's funds and therefore needs the wallet's signature
+  // — the backend prepares the unsigned transaction, the wallet signs it,
+  // and only the signed XDR is submitted. (#465, #671)
   const handleBatchSubmit = async (recipients: { address: string; amount: string }[]) => {
     if (!isNetworkSupported) {
       throw new Error(
@@ -431,7 +431,10 @@ export default function BridgePage() {
           : "Freighter's network couldn't be read. Unlock the extension and reload before submitting."
       );
     }
-    const response = await submitBatchFunding(fromAddress, recipients, network);
+    await assertActiveAccountMatches(fromAddress);
+    const { xdr } = await prepareBatchFunding(fromAddress, recipients, network);
+    const signedXdr = await signPreparedTransaction(xdr, network);
+    const response = await submitSignedBatchFunding(signedXdr, network);
     return response.results;
   };
 

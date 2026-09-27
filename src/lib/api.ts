@@ -156,22 +156,30 @@ export interface BatchFundingResponse {
   results: BatchFundingRecipientResult[];
 }
 
+export interface PreparedBatchFunding {
+  /** Unsigned transaction XDR invoking the contract's batch_fund_c_address, built server-side. */
+  xdr: string;
+}
+
 /**
- * Submits a batch of C-address funding recipients to the batch endpoint,
- * which invokes the contract's `batch_fund_c_address` on the backend (#465).
+ * Asks the backend to build (but not submit) the `batch_fund_c_address`
+ * invocation for these recipients, returning an unsigned transaction XDR for
+ * the wallet to sign (#671).
  *
- * Resolves with one result per recipient — including partial failure, where
- * some recipients succeed and others don't — as long as the request itself
- * reaches the API. Throws only when the request as a whole cannot be
- * completed (network failure, non-2xx response), since at that point no
- * per-recipient results exist to report.
+ * PLACEHOLDER ENDPOINT: no contract ABI/bindings for batch_fund_c_address
+ * exist in this repo, so the invocation can't be built client-side with any
+ * confidence in the argument encoding. `POST /api/v1/fund/batch` (the
+ * confirmed submit endpoint, see submitSignedBatchFunding below) implies a
+ * prepare step must exist somewhere to produce the XDR it accepts, but this
+ * exact path/body is a best guess and must be reconciled against the real
+ * API once it's documented.
  */
-export async function submitBatchFunding(
+export async function prepareBatchFunding(
   fromAddress: string,
   recipients: BatchFundingRecipient[],
   network: StellarNetwork
-): Promise<BatchFundingResponse> {
-  const response = await fetch(`${API_BASE_URL}/batch-fund`, {
+): Promise<PreparedBatchFunding> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/fund/batch/prepare`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -180,16 +188,38 @@ export async function submitBatchFunding(
   });
 
   if (!response.ok) {
-    let message = `Batch funding request failed (${response.status})`;
-    try {
-      const body = (await response.json()) as { error?: string };
-      if (body && typeof body.error === "string" && body.error) {
-        message = body.error;
-      }
-    } catch {
-      // Response body wasn't JSON (or empty) — keep the generic status message.
-    }
-    throw new Error(message);
+    throw new Error(await extractApiErrorMessage(response, `Batch preparation failed (${response.status})`));
+  }
+
+  const body = (await response.json()) as Partial<PreparedBatchFunding>;
+  if (typeof body.xdr !== "string" || !body.xdr) {
+    throw new Error("Batch preparation response was missing the transaction to sign.");
+  }
+  return { xdr: body.xdr };
+}
+
+/**
+ * Submits a wallet-signed `batch_fund_c_address` transaction to the real
+ * batch endpoint (#671). Resolves with one result per recipient — including
+ * partial failure, where some recipients succeed and others don't — as long
+ * as the request itself reaches the API. Throws only when the request as a
+ * whole cannot be completed (network failure, non-2xx response), since at
+ * that point no per-recipient results exist to report.
+ */
+export async function submitSignedBatchFunding(
+  signedXdr: string,
+  network: StellarNetwork
+): Promise<BatchFundingResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/fund/batch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ signedXdr, network }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractApiErrorMessage(response, `Batch funding request failed (${response.status})`));
   }
 
   return (await response.json()) as BatchFundingResponse;

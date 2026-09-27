@@ -41,6 +41,8 @@ vi.mock("@/lib/stellar", () => {
     getAccountMinimumBalance: () => "1",
     getEstimatedFeeXLM: vi.fn().mockResolvedValue("~0.00001 XLM"),
     toSafeErrorMessage: (_e: unknown, fallback: string) => fallback,
+    assertActiveAccountMatches: vi.fn().mockResolvedValue(undefined),
+    signPreparedTransaction: vi.fn().mockResolvedValue("stub-signed-xdr"),
   };
 });
 

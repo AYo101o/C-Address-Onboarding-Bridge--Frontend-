@@ -928,6 +928,43 @@ export async function bridgeViaContract(
 }
 
 /**
+ * Signs an already-built, unsigned transaction XDR — e.g. one a backend
+ * "prepare" endpoint returned — through the same e2e-aware, kit-abstracted
+ * path buildAndSubmitPayment's own signing step uses (#671). Unlike that
+ * path, this never builds the transaction itself, so it has no source
+ * account or operations of its own to validate; callers that need the
+ * active wallet to match a specific address (as batch funding does) must
+ * call assertActiveAccountMatches themselves first.
+ */
+export async function signPreparedTransaction(unsignedXdr: string, network: StellarNetwork): Promise<string> {
+  const passphrase = await getNetworkPassphrase(network);
+  const e2eWallet = e2eWalletConfig();
+
+  let signedResult: { signedTxXdr: string };
+  if (e2eWallet) {
+    if (e2eWallet.shouldRejectSign) {
+      throw new Error("User declined access");
+    }
+    const tx = TransactionBuilder.fromXDR(unsignedXdr, passphrase);
+    tx.sign(Keypair.fromSecret(e2eWallet.secret));
+    signedResult = { signedTxXdr: tx.toXDR() };
+  } else {
+    const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit/sdk");
+    signedResult = await StellarWalletsKit.signTransaction(unsignedXdr, {
+      networkPassphrase: passphrase,
+    });
+  }
+
+  const signedXDR = signedResult.signedTxXdr;
+  if (typeof signedXDR !== "string" || !signedXDR) {
+    throw new Error(
+      "Wallet returned an unexpected response while signing — the signed transaction is missing or empty."
+    );
+  }
+  return signedXDR;
+}
+
+/**
  * Builds a URL to view a transaction, account, or contract on stellar.expert.
  *
  * **Security audit (#338):**
