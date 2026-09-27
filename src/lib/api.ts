@@ -10,24 +10,78 @@ import type { FeeTierStatus } from "./feeTiers";
 import type { Lock } from "./locks";
 import type { ReferralStats } from "./referrals";
 
+type ServiceState = 'up' | 'down' | 'degraded';
+type CircuitState = 'closed' | 'open' | 'half-open';
+
+/**
+ * UI-facing health model (#670).
+ *
+ * The backend's actual `GET /health` response is `{ status: 'ok' | 'degraded'
+ * | 'unhealthy', dependencies: {...}, circuits: {...} }` — not the
+ * `{ status: 'healthy' | ..., services: {...}, circuitBreakers }` shape this
+ * type used to mirror directly. `parseHealthResponse` below maps the real
+ * response into this stable shape, so this interface (and everything reading
+ * it) keeps its original field names regardless of the backend's own naming.
+ */
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
-  timestamp: string;
-  services: {
-    horizon: 'up' | 'down' | 'degraded';
-    soroban_rpc: 'up' | 'down' | 'degraded';
-    api: 'up' | 'down' | 'degraded';
-  };
-  circuitBreakers?: {
-    [key: string]: {
-      state: 'closed' | 'open' | 'half-open';
-      failures: number;
-      lastFailure?: string;
-    };
-  };
+  timestamp: string | null;
+  services: Record<string, ServiceState>;
+  circuitBreakers: Record<string, { state: CircuitState; failures: number; lastFailure?: string }>;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.example.com';
+
+const SERVICE_STATES: ServiceState[] = ['up', 'down', 'degraded'];
+const CIRCUIT_STATES: CircuitState[] = ['closed', 'open', 'half-open'];
+
+function isServiceState(value: unknown): value is ServiceState {
+  return typeof value === 'string' && (SERVICE_STATES as string[]).includes(value);
+}
+
+/** Backend field names for individual dependencies aren't guaranteed, so every key is kept as-is. */
+function parseServiceMap(value: unknown): Record<string, ServiceState> {
+  if (!value || typeof value !== 'object') return {};
+  const result: Record<string, ServiceState> = {};
+  for (const [key, state] of Object.entries(value as Record<string, unknown>)) {
+    if (isServiceState(state)) result[key] = state;
+  }
+  return result;
+}
+
+function parseCircuitMap(value: unknown): HealthStatus['circuitBreakers'] {
+  if (!value || typeof value !== 'object') return {};
+  const result: HealthStatus['circuitBreakers'] = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { state, failures, lastFailure } = entry as Record<string, unknown>;
+    if (!CIRCUIT_STATES.includes(state as CircuitState)) continue;
+    result[key] = {
+      state: state as CircuitState,
+      failures: typeof failures === 'number' ? failures : 0,
+      lastFailure: typeof lastFailure === 'string' ? lastFailure : undefined,
+    };
+  }
+  return result;
+}
+
+/**
+ * Validates and maps a raw `GET /health` response into `HealthStatus`.
+ * Never throws: an unrecognized or malformed shape degrades to `unhealthy`
+ * with empty service/circuit maps rather than crashing the status banner —
+ * a shape we can't parse is itself worth surfacing as unhealthy.
+ */
+export function parseHealthResponse(data: unknown): HealthStatus | null {
+  if (!data || typeof data !== 'object') return null;
+  const raw = data as Record<string, unknown>;
+  const status = raw.status === 'ok' || raw.status === 'healthy' ? 'healthy' : raw.status === 'degraded' ? 'degraded' : 'unhealthy';
+  return {
+    status,
+    timestamp: typeof raw.timestamp === 'string' ? raw.timestamp : null,
+    services: parseServiceMap(raw.dependencies),
+    circuitBreakers: parseCircuitMap(raw.circuits),
+  };
+}
 
 /**
  * Fetch the current health status from the API.
@@ -46,7 +100,7 @@ export async function getHealthStatus(): Promise<HealthStatus | null> {
       return null;
     }
 
-    return (await response.json()) as HealthStatus;
+    return parseHealthResponse(await response.json());
   } catch (error) {
     console.error('Failed to fetch health status:', error);
     return null;
@@ -70,11 +124,14 @@ export function getStatusMessage(health: HealthStatus | null): string | null {
   switch (health.status) {
     case 'healthy':
       return null;
-    case 'degraded':
+    case 'degraded': {
       const degradedServices = Object.entries(health.services)
         .filter(([, status]) => status !== 'up')
         .map(([name]) => name.replace(/_/g, ' '));
-      return `Service degradation detected: ${degradedServices.join(', ')}. Features may be slower.`;
+      return degradedServices.length > 0
+        ? `Service degradation detected: ${degradedServices.join(', ')}. Features may be slower.`
+        : 'Service degradation detected. Features may be slower.';
+    }
     case 'unhealthy':
       return 'Service is currently unavailable. Please try again later.';
     default:
