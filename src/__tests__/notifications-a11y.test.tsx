@@ -51,10 +51,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
-vi.mock("@/hooks/useCopyToClipboard", () => ({
-  useCopyToClipboard: () => ({ status: "idle", copy: vi.fn(), reset: vi.fn() }),
-}));
-
 const wallet = {
   isConnected: true,
   address: ADDRESS,
@@ -175,7 +171,7 @@ describe("Dashboard notifications", () => {
     expect(button.getAttribute("title")).toBe("Copy address");
   });
 
-  it.skip("announces a successful address copy", async () => {
+  it("announces a successful address copy", async () => {
     const writeText = stubClipboard("success");
     const { container } = await renderDashboard();
 
@@ -187,7 +183,7 @@ describe("Dashboard notifications", () => {
     expect(politeText(container)).toBe("Wallet address copied to clipboard.");
   });
 
-  it.skip("announces a failed address copy instead of reporting success", async () => {
+  it("announces a failed address copy instead of reporting success", async () => {
     stubClipboard("failure");
     const { container } = await renderDashboard();
 
@@ -207,13 +203,25 @@ describe("Dashboard notifications", () => {
 });
 
 describe("CEX page notifications", () => {
+  // The C-address input is validated against a 200ms-debounced value
+  // (useDebounce), so entering an address doesn't take effect until that
+  // delay elapses. Fake timers make that deterministic instead of racing a
+  // real 200ms setTimeout against the test's synchronous assertions.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   const enterAddress = (value: string) => {
     fireEvent.change(screen.getByLabelText("Soroban C-address"), { target: { value } });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
   };
 
   it.skip("announces validation success, not only failure", () => {
@@ -227,7 +235,7 @@ describe("CEX page notifications", () => {
     expect(screen.getByRole("status").textContent).toContain("Valid C-address");
   });
 
-  it.skip("announces a successful C-address copy", async () => {
+  it("announces a successful C-address copy", async () => {
     const writeText = stubClipboard("success");
     const { container } = render(<CexPage />);
 
@@ -241,7 +249,7 @@ describe("CEX page notifications", () => {
     expect(politeText(container)).toBe("C-address copied to clipboard.");
   });
 
-  it.skip("announces a failed C-address copy", async () => {
+  it("announces a failed C-address copy", async () => {
     stubClipboard("failure");
     const { container } = render(<CexPage />);
 
