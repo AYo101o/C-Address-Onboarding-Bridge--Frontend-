@@ -1,6 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
-import { isValidStellarAddress, isCAddress, isGAddress } from "@/lib/stellar";
+import {
+  isValidStellarAddress,
+  isCAddress,
+  isGAddress,
+  isValidStellarAmount,
+  getAccountBalances,
+  clearAccountBalancesCache,
+  fetchRecentTransactions,
+} from "@/lib/stellar";
 
 // Real, checksum-valid StrKeys derived from the SDK — not hardcoded strings
 // that merely "look" the right length/prefix. The G-address is a genuine
@@ -142,6 +150,39 @@ describe("isGAddress", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Shared mock for Horizon.Server used by getAccountBalances and
+// fetchRecentTransactions tests. We mock Horizon.Server so the real SDK
+// network is never contacted; each describe block resets the relevant mock fn.
+// ---------------------------------------------------------------------------
+const loadAccount = vi.fn();
+const paymentsCall = vi.fn();
+
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@stellar/stellar-sdk")>();
+  return {
+    ...actual,
+    Horizon: {
+      ...actual.Horizon,
+      Server: vi.fn().mockImplementation(function MockHorizonServer(this: {
+        loadAccount: typeof loadAccount;
+        payments: () => unknown;
+      }) {
+        this.loadAccount = loadAccount;
+        this.payments = () => ({
+          forAccount: () => ({
+            limit: () => ({
+              order: () => ({
+                call: paymentsCall,
+              }),
+            }),
+          }),
+        });
+      }),
+    },
+  };
+});
+
 describe("getAccountBalances cache", () => {
   const account = (xlm: string) => ({
     balances: [{ asset_type: "native", balance: xlm }],
@@ -239,5 +280,183 @@ describe("getAccountBalances cache", () => {
     await getAccountBalances(G_ADDRESS, "TESTNET");
 
     expect(loadAccount).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("fetchRecentTransactions", () => {
+  beforeEach(() => {
+    paymentsCall.mockReset();
+  });
+
+  it("maps a payment operation to BridgeTransactionData", async () => {
+    paymentsCall.mockResolvedValue({
+      records: [
+        {
+          id: "tx1",
+          type: "payment",
+          from: G_ADDRESS,
+          to: C_ADDRESS,
+          amount: "50.0",
+          asset_type: "native",
+          transaction_successful: true,
+          created_at: "2024-01-01T00:00:00Z",
+          transaction_hash: "abc123",
+        },
+      ],
+    });
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 10);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      id: "tx1",
+      fromAddress: G_ADDRESS,
+      toAddress: C_ADDRESS,
+      amount: "50.0",
+      asset: "XLM",
+      status: "confirmed",
+      type: "g-to-c",
+      hash: "abc123",
+    });
+    expect(typeof results[0].timestamp).toBe("number");
+  });
+
+  it("maps a create_account operation using funder/account/starting_balance", async () => {
+    paymentsCall.mockResolvedValue({
+      records: [
+        {
+          id: "tx2",
+          type: "create_account",
+          funder: G_ADDRESS,
+          account: C_ADDRESS,
+          starting_balance: "1.5",
+          transaction_successful: true,
+          created_at: "2024-01-02T00:00:00Z",
+          transaction_hash: "def456",
+        },
+      ],
+    });
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 10);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      id: "tx2",
+      fromAddress: G_ADDRESS,
+      toAddress: C_ADDRESS,
+      amount: "1.5",
+      asset: "XLM",
+      status: "confirmed",
+    });
+  });
+
+  it("sets status to failed when transaction_successful is false", async () => {
+    paymentsCall.mockResolvedValue({
+      records: [
+        {
+          id: "tx3",
+          type: "payment",
+          from: G_ADDRESS,
+          to: C_ADDRESS,
+          amount: "10",
+          asset_type: "native",
+          transaction_successful: false,
+          created_at: "2024-01-03T00:00:00Z",
+          transaction_hash: "ghi789",
+        },
+      ],
+    });
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 10);
+
+    expect(results[0].status).toBe("failed");
+  });
+
+  it("sets status to pending when transaction_successful is absent", async () => {
+    paymentsCall.mockResolvedValue({
+      records: [
+        {
+          id: "tx4",
+          type: "payment",
+          from: G_ADDRESS,
+          to: C_ADDRESS,
+          amount: "5",
+          asset_type: "native",
+          // transaction_successful intentionally omitted
+          created_at: "2024-01-04T00:00:00Z",
+          transaction_hash: "jkl000",
+        },
+      ],
+    });
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 10);
+
+    expect(results[0].status).toBe("pending");
+  });
+
+  it("uses asset_code for non-native payment assets", async () => {
+    paymentsCall.mockResolvedValue({
+      records: [
+        {
+          id: "tx5",
+          type: "payment",
+          from: G_ADDRESS,
+          to: C_ADDRESS,
+          amount: "100",
+          asset_type: "credit_alphanum4",
+          asset_code: "USDC",
+          transaction_successful: true,
+          created_at: "2024-01-05T00:00:00Z",
+          transaction_hash: "mno111",
+        },
+      ],
+    });
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 10);
+
+    expect(results[0].asset).toBe("USDC");
+  });
+
+  it("returns empty array when Horizon call throws", async () => {
+    paymentsCall.mockRejectedValue(new Error("network error"));
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 10);
+
+    expect(results).toEqual([]);
+  });
+
+  it("returns multiple records in the order Horizon returns them", async () => {
+    paymentsCall.mockResolvedValue({
+      records: [
+        {
+          id: "tx-a",
+          type: "payment",
+          from: G_ADDRESS,
+          to: C_ADDRESS,
+          amount: "1",
+          asset_type: "native",
+          transaction_successful: true,
+          created_at: "2024-01-06T00:00:00Z",
+          transaction_hash: "aaa",
+        },
+        {
+          id: "tx-b",
+          type: "payment",
+          from: G_ADDRESS,
+          to: C_ADDRESS,
+          amount: "2",
+          asset_type: "native",
+          transaction_successful: true,
+          created_at: "2024-01-05T00:00:00Z",
+          transaction_hash: "bbb",
+        },
+      ],
+    });
+
+    const results = await fetchRecentTransactions(G_ADDRESS, "TESTNET", 2);
+
+    expect(results).toHaveLength(2);
+    expect(results[0].id).toBe("tx-a");
+    expect(results[1].id).toBe("tx-b");
   });
 });
