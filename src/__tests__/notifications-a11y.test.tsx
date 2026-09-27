@@ -263,9 +263,14 @@ describe("CEX page notifications", () => {
 describe("Onramp page notifications", () => {
   const originalOpen = window.open;
 
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
     cleanup();
     window.open = originalOpen;
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.resetModules();
     vi.clearAllMocks();
@@ -286,9 +291,14 @@ describe("Onramp page notifications", () => {
     const [addressInput, amountInput] = screen.getAllByRole("textbox");
     fireEvent.change(addressInput, { target: { value: VALID_C_ADDRESS } });
     fireEvent.change(amountInput, { target: { value: "100.00" } });
+    // Both fields are validated against a 300ms-debounced value (useDebounce);
+    // canProceed (and so the Continue button) stays false until that elapses.
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
   };
 
-  it.skip("announces a redirect failure via an alert", async () => {
+  it("announces a redirect failure via an alert", async () => {
     // No API key configured — the Continue click fails before opening a tab.
     const OnrampPage = await loadOnramp("");
     render(<OnrampPage />);
@@ -300,7 +310,7 @@ describe("Onramp page notifications", () => {
     expect(alert.textContent).toContain("API key is not configured");
   });
 
-  it.skip("announces that a new tab was opened for checkout", async () => {
+  it("announces that a new tab was opened for checkout", async () => {
     const open = vi.fn();
     window.open = open as unknown as typeof window.open;
 
