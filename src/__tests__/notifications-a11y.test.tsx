@@ -224,7 +224,7 @@ describe("CEX page notifications", () => {
     });
   };
 
-  it.skip("announces validation success, not only failure", () => {
+  it("announces validation success, not only failure", () => {
     render(<CexPage />);
 
     enterAddress("not-a-c-address");
