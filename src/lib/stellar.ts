@@ -644,43 +644,15 @@ async function buildSignAndSubmit(
       // that will either fail at submission or, worse, succeed on the wrong
       // chain.
       //
-      // We call getNetwork() directly (rather than getCurrentNetwork()) so we
-      // can distinguish:
-      //   a) getNetwork returns undefined (test mock not set up, or extension
-      //      returned no data) → treat as "can't verify, proceed"
-      //   b) getNetwork returns a different known network → abort
-      //   c) getNetwork rejects (Freighter locked, etc.) → abort with UNKNOWN
-      try {
-        const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit/sdk");
-        const netResult = await StellarWalletsKit.getNetwork();
-        if (netResult !== undefined && netResult !== null && typeof netResult === "object") {
-          // Check for in-band error (e.g. user declined access)
-          if ("error" in netResult && (netResult as { error?: unknown }).error) {
-            throw new Error(
-              `Network changed in Freighter — please retry. ` +
-              `Transaction was built for ${network} but Freighter is now on UNKNOWN.`
-            );
-          }
-          // Compare the actual reported network
-          const reportedRaw = (netResult as { network?: string }).network;
-          const reported = (reportedRaw ?? "").toUpperCase() as WalletNetworkState;
-          if (reported && reported !== network) {
-            throw new Error(
-              `Network changed in Freighter — please retry. ` +
-              `Transaction was built for ${network} but Freighter is now on ${reported}.`
-            );
-          }
-        }
-        // If netResult is undefined/null, we can't verify the network — proceed
-      } catch (networkErr) {
-        // Re-throw errors we raised ourselves
-        if (networkErr instanceof Error && networkErr.message.includes("Network changed in Freighter")) {
-          throw networkErr;
-        }
-        // getNetwork() itself rejected (Freighter locked, locked extension, etc.)
+      // Fails closed: getWalletNetwork() maps a rejected query, an in-band
+      // error, an empty response or an unrecognised network to UNKNOWN or
+      // UNSUPPORTED, and anything other than an exact match aborts. (#650)
+      const walletNetwork = await getWalletNetwork();
+      if (walletNetwork.status !== network) {
+        const actual = walletNetwork.name ?? walletNetwork.status;
         throw new Error(
-          "Network changed in wallet — please retry. " +
-          `Transaction was built for ${network} but wallet is now on UNKNOWN.`
+          `Network changed in Freighter — please retry. ` +
+          `Transaction was built for ${network} but Freighter is now on ${actual}.`
         );
       }
 
