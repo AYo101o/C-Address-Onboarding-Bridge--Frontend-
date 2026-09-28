@@ -5,8 +5,8 @@ The onboarding layer for Soroban dApps. Fund any Soroban smart account (C-addres
 ## Features
 
 - **G → C Bridge** *(not yet live — see #284)* — Will send XLM or USDC from a Stellar G-address to a Soroban C-address; classic Stellar payments can't target contract addresses, so this requires a Soroban smart-contract transfer step that hasn't shipped. The UI currently blocks this flow with an explanatory message instead of submitting a doomed transaction.
-- **Fiat Onramp** — Buy USDC with a credit/debit card via Moonpay or Transak and send directly to a C-address.
-- **CEX Withdrawal Routing** — Withdraw from Binance, Coinbase, or Kraken to a bridge address that routes funds to your C-address.
+- **Fiat Onramp** *(not yet live — see #733)* — Buy USDC with a credit/debit card via Moonpay or Transak. Providers cannot pay contract addresses directly, so funds cannot be sent straight to a C-address today; the onramp must first deliver to a G-address and then be bridged to the C-address once the G → C bridge ships.
+- **CEX Withdrawal Routing** *(coming soon — see #734)* — Withdraw from Binance, Coinbase, or Kraken. The CEX deposit section is not yet implemented, so it does not currently withdraw to a bridge address that routes funds to your C-address.
 
 ## Tech Stack
 
