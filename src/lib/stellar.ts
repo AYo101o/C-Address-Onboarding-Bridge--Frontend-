@@ -17,6 +17,7 @@ import {
   type StellarNetwork,
   type WalletNetworkState,
   type BridgeTransactionData,
+  isSupportedNetwork,
 } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
 
@@ -315,8 +316,9 @@ export async function getWalletNetwork(): Promise<WalletNetworkInfo> {
       return { status: "UNKNOWN", name: null };
     }
     const name = String(result.network ?? "").toUpperCase();
-    if (name === "PUBLIC" || name === "TESTNET") {
-      return { status: name, name };
+    const reported = name as WalletNetworkState;
+    if (isSupportedNetwork(reported)) {
+      return { status: reported, name };
     }
     return { status: "UNSUPPORTED", name: name || null };
   } catch {
@@ -644,44 +646,18 @@ async function buildSignAndSubmit(
       // that will either fail at submission or, worse, succeed on the wrong
       // chain.
       //
-      // We call getNetwork() directly (rather than getCurrentNetwork()) so we
-      // can distinguish:
-      //   a) getNetwork returns undefined (test mock not set up, or extension
-      //      returned no data) → treat as "can't verify, proceed"
-      //   b) getNetwork returns a different known network → abort
-      //   c) getNetwork rejects (Freighter locked, etc.) → abort with UNKNOWN
-      try {
-        const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit/sdk");
-        const netResult = await StellarWalletsKit.getNetwork();
-        if (netResult !== undefined && netResult !== null && typeof netResult === "object") {
-          // Check for in-band error (e.g. user declined access)
-          if ("error" in netResult && (netResult as { error?: unknown }).error) {
-            throw new Error(
-              `Network changed in Freighter — please retry. ` +
-              `Transaction was built for ${network} but Freighter is now on UNKNOWN.`
-            );
-          }
-          // Compare the actual reported network
-          const reportedRaw = (netResult as { network?: string }).network;
-          const reported = (reportedRaw ?? "").toUpperCase() as WalletNetworkState;
-          if (reported && reported !== network) {
-            throw new Error(
-              `Network changed in Freighter — please retry. ` +
-              `Transaction was built for ${network} but Freighter is now on ${reported}.`
-            );
-          }
-        }
-        // If netResult is undefined/null, we can't verify the network — proceed
-      } catch (networkErr) {
-        // Re-throw errors we raised ourselves
-        if (networkErr instanceof Error && networkErr.message.includes("Network changed in Freighter")) {
-          throw networkErr;
-        }
-        // getNetwork() itself rejected (Freighter locked, locked extension, etc.)
-        throw new Error(
-          "Network changed in wallet — please retry. " +
-          `Transaction was built for ${network} but wallet is now on UNKNOWN.`
-        );
+      // One check, three outcomes. getWalletNetwork() never throws: a rejected
+      // query, an in-band error or an empty response reads as UNKNOWN, and any
+      // name outside the supported list reads as UNSUPPORTED.
+      //   unreadable or unsupported → abort, fail closed (#651)
+      //   supported but different   → abort (#241)
+      //   matches                   → proceed
+      const walletNetwork = await getWalletNetwork();
+      if (!isSupportedNetwork(walletNetwork.status)) {
+        throw networkChangedError(network, walletNetwork.name ?? walletNetwork.status);
+      }
+      if (walletNetwork.status !== network) {
+        throw networkChangedError(network, walletNetwork.status);
       }
 
       // Use the Stellar Wallets Kit to sign — this works regardless of which
@@ -715,6 +691,14 @@ async function buildSignAndSubmit(
     },
     server,
     network
+  );
+}
+
+/** The abort raised when the wallet isn't on the network a transaction was built for. */
+function networkChangedError(expected: StellarNetwork, actual: string): Error {
+  return new Error(
+    `Network changed in Freighter — please retry. ` +
+      `Transaction was built for ${expected} but Freighter is now on ${actual}.`
   );
 }
 
