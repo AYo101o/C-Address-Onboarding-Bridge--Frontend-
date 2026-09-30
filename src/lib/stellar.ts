@@ -757,16 +757,20 @@ export function toSafeErrorMessage(error: unknown, fallback: string): string {
 export async function assertActiveAccountMatches(sourceAddress: string): Promise<void> {
   const active = await getWalletAddress();
 
+  // An empty/null address covers no wallet selected, a locked extension, and
+  // a kit error alike: none of them leaves an account that could sign. (#654)
   if (!active) {
     throw new Error(
-      "Couldn't read Freighter's active account. Connect (or unlock) Freighter and try again."
+      "No wallet is connected. Connect (or unlock) your wallet and try again."
     );
   }
 
+  // Refuse rather than substitute the active account: the payment must come
+  // from the address the user reviewed, or not be signed at all. (#654)
   if (active !== sourceAddress) {
     throw new Error(
-      `Freighter's active account (${truncateAddress(active)}) doesn't match the From address (${truncateAddress(sourceAddress)}). ` +
-        "Switch accounts in Freighter or use the connected address."
+      `Your wallet's active account (${truncateAddress(active)}) does not match the source address (${truncateAddress(sourceAddress)}). ` +
+        "Switch accounts in your wallet or use the connected address."
     );
   }
 }

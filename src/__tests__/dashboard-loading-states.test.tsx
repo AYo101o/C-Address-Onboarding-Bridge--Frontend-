@@ -121,7 +121,7 @@ describe("Dashboard stat cards — loading, empty, populated (#485)", () => {
     });
   });
 
-  it.skip("shows an explicit empty state (0 XLM, 0 transactions) instead of looking stuck", async () => {
+  it("shows an explicit empty state (0 XLM, 0 transactions) instead of looking stuck", async () => {
     getAccountBalances.mockResolvedValue({ total: "0.0000000" });
     fetchRecentTransactions.mockResolvedValue([]);
 
@@ -136,7 +136,7 @@ describe("Dashboard stat cards — loading, empty, populated (#485)", () => {
     expect(screen.getByText("No transactions found for this account.")).not.toBeNull();
   });
 
-  it.skip("shows populated balance and transaction counts once data arrives", async () => {
+  it("shows populated balance and transaction counts once data arrives", async () => {
     getAccountBalances.mockResolvedValue({ total: "123.4500000" });
     fetchRecentTransactions.mockResolvedValue([
       {

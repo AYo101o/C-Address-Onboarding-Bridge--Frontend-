@@ -99,7 +99,7 @@ describe("Bridge form — fee tier display (#468)", () => {
     expect(screen.queryByTestId("fee-tier-display")).not.toBeInTheDocument();
   });
 
-  it.skip("shows the current tier and a discounted fee quote for an intermediate tier", async () => {
+  it("shows the current tier and a discounted fee quote for an intermediate tier", async () => {
     const status: FeeTierStatus = {
       currentVolume: 4000,
       currentTier: { name: "Silver", volumeThreshold: 1000, feeRate: 0.003 },
@@ -123,7 +123,7 @@ describe("Bridge form — fee tier display (#468)", () => {
     expect(screen.getByTestId("tier-progress")).toBeInTheDocument();
   });
 
-  it.skip("shows the top-tier message when the account has no next tier", async () => {
+  it("shows the top-tier message when the account has no next tier", async () => {
     const status: FeeTierStatus = {
       currentVolume: 50000,
       currentTier: { name: "Gold", volumeThreshold: 10000, feeRate: 0.001 },
