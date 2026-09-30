@@ -13,6 +13,13 @@ import { StrKey } from "@stellar/stellar-sdk";
 import LiveRegion from "@/components/live-region";
 import TransactionHistory from "@/components/transaction-history";
 import DashboardPage from "@/components/routes/dashboard-page";
+
+// DashboardPage mounts ClaimsPanel, which is gated behind the
+// locked_transfers flag (#672) — mock it off since none of these tests
+// exercise the lock/claims feature.
+vi.mock("@/contexts/FeatureFlagContext", () => ({
+  useFeatureFlag: () => false,
+}));
 import CexPage from "@/components/routes/cex-page";
 
 const ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5V3VQ";

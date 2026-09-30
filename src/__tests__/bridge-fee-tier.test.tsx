@@ -19,6 +19,13 @@ import type { FeeTierStatus } from "@/lib/feeTiers";
 const VALID_C_ADDRESS = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 const FROM_ADDRESS = vi.hoisted(() => "G" + "A".repeat(55));
 
+// The lock/claims feature is behind the locked_transfers flag (#672), off by
+// default; this file doesn't exercise it, so the mocked value doesn't matter
+// beyond satisfying the provider requirement.
+vi.mock("@/contexts/FeatureFlagContext", () => ({
+  useFeatureFlag: () => false,
+}));
+
 vi.mock("@/components/wallet-provider", () => ({
   useWallet: () => ({
     isConnected: true,
@@ -47,6 +54,8 @@ vi.mock("@/lib/stellar", () => ({
   getAccountMinimumBalance: () => "1",
   getEstimatedFeeXLM: vi.fn().mockResolvedValue("~0.00001 XLM"),
   toSafeErrorMessage: (_e: unknown, fallback: string) => fallback,
+  assertActiveAccountMatches: vi.fn().mockResolvedValue(undefined),
+  signPreparedTransaction: vi.fn().mockResolvedValue("stub-signed-xdr"),
 }));
 
 const getFeeTierPreviewMock = vi.fn();
@@ -63,7 +72,8 @@ vi.mock("@/lib/api", () => ({
   // See note in bridge-lock-option.test.tsx — the factory must cover every
   // name the bridge page imports from this module.
   createLock: () => Promise.resolve(null),
-  submitBatchFunding: () => Promise.resolve({ results: [] }),
+  prepareBatchFunding: () => Promise.resolve({ xdr: "stub-xdr" }),
+  submitSignedBatchFunding: () => Promise.resolve({ results: [] }),
 }));
 
 // The review step requires `!bridgingBlocked`, which is never true for any

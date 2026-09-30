@@ -9,25 +9,80 @@ import type { FeeTierStatus } from "./feeTiers";
 // API type from lib.dom, so every lock field access failed to typecheck.
 import type { Lock } from "./locks";
 import type { ReferralStats } from "./referrals";
+import type { ClaimProof } from "./stellar";
 
+type ServiceState = 'up' | 'down' | 'degraded';
+type CircuitState = 'closed' | 'open' | 'half-open';
+
+/**
+ * UI-facing health model (#670).
+ *
+ * The backend's actual `GET /health` response is `{ status: 'ok' | 'degraded'
+ * | 'unhealthy', dependencies: {...}, circuits: {...} }` — not the
+ * `{ status: 'healthy' | ..., services: {...}, circuitBreakers }` shape this
+ * type used to mirror directly. `parseHealthResponse` below maps the real
+ * response into this stable shape, so this interface (and everything reading
+ * it) keeps its original field names regardless of the backend's own naming.
+ */
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
-  timestamp: string;
-  services: {
-    horizon: 'up' | 'down' | 'degraded';
-    soroban_rpc: 'up' | 'down' | 'degraded';
-    api: 'up' | 'down' | 'degraded';
-  };
-  circuitBreakers?: {
-    [key: string]: {
-      state: 'closed' | 'open' | 'half-open';
-      failures: number;
-      lastFailure?: string;
-    };
-  };
+  timestamp: string | null;
+  services: Record<string, ServiceState>;
+  circuitBreakers: Record<string, { state: CircuitState; failures: number; lastFailure?: string }>;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.example.com';
+
+const SERVICE_STATES: ServiceState[] = ['up', 'down', 'degraded'];
+const CIRCUIT_STATES: CircuitState[] = ['closed', 'open', 'half-open'];
+
+function isServiceState(value: unknown): value is ServiceState {
+  return typeof value === 'string' && (SERVICE_STATES as string[]).includes(value);
+}
+
+/** Backend field names for individual dependencies aren't guaranteed, so every key is kept as-is. */
+function parseServiceMap(value: unknown): Record<string, ServiceState> {
+  if (!value || typeof value !== 'object') return {};
+  const result: Record<string, ServiceState> = {};
+  for (const [key, state] of Object.entries(value as Record<string, unknown>)) {
+    if (isServiceState(state)) result[key] = state;
+  }
+  return result;
+}
+
+function parseCircuitMap(value: unknown): HealthStatus['circuitBreakers'] {
+  if (!value || typeof value !== 'object') return {};
+  const result: HealthStatus['circuitBreakers'] = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { state, failures, lastFailure } = entry as Record<string, unknown>;
+    if (!CIRCUIT_STATES.includes(state as CircuitState)) continue;
+    result[key] = {
+      state: state as CircuitState,
+      failures: typeof failures === 'number' ? failures : 0,
+      lastFailure: typeof lastFailure === 'string' ? lastFailure : undefined,
+    };
+  }
+  return result;
+}
+
+/**
+ * Validates and maps a raw `GET /health` response into `HealthStatus`.
+ * Never throws: an unrecognized or malformed shape degrades to `unhealthy`
+ * with empty service/circuit maps rather than crashing the status banner —
+ * a shape we can't parse is itself worth surfacing as unhealthy.
+ */
+export function parseHealthResponse(data: unknown): HealthStatus | null {
+  if (!data || typeof data !== 'object') return null;
+  const raw = data as Record<string, unknown>;
+  const status = raw.status === 'ok' || raw.status === 'healthy' ? 'healthy' : raw.status === 'degraded' ? 'degraded' : 'unhealthy';
+  return {
+    status,
+    timestamp: typeof raw.timestamp === 'string' ? raw.timestamp : null,
+    services: parseServiceMap(raw.dependencies),
+    circuitBreakers: parseCircuitMap(raw.circuits),
+  };
+}
 
 /**
  * Fetch the current health status from the API.
@@ -46,7 +101,7 @@ export async function getHealthStatus(): Promise<HealthStatus | null> {
       return null;
     }
 
-    return (await response.json()) as HealthStatus;
+    return parseHealthResponse(await response.json());
   } catch (error) {
     console.error('Failed to fetch health status:', error);
     return null;
@@ -70,11 +125,14 @@ export function getStatusMessage(health: HealthStatus | null): string | null {
   switch (health.status) {
     case 'healthy':
       return null;
-    case 'degraded':
+    case 'degraded': {
       const degradedServices = Object.entries(health.services)
         .filter(([, status]) => status !== 'up')
         .map(([name]) => name.replace(/_/g, ' '));
-      return `Service degradation detected: ${degradedServices.join(', ')}. Features may be slower.`;
+      return degradedServices.length > 0
+        ? `Service degradation detected: ${degradedServices.join(', ')}. Features may be slower.`
+        : 'Service degradation detected. Features may be slower.';
+    }
     case 'unhealthy':
       return 'Service is currently unavailable. Please try again later.';
     default:
@@ -163,22 +221,30 @@ export interface BatchFundingResponse {
   results: BatchFundingRecipientResult[];
 }
 
+export interface PreparedBatchFunding {
+  /** Unsigned transaction XDR invoking the contract's batch_fund_c_address, built server-side. */
+  xdr: string;
+}
+
 /**
- * Submits a batch of C-address funding recipients to the batch endpoint,
- * which invokes the contract's `batch_fund_c_address` on the backend (#465).
+ * Asks the backend to build (but not submit) the `batch_fund_c_address`
+ * invocation for these recipients, returning an unsigned transaction XDR for
+ * the wallet to sign (#671).
  *
- * Resolves with one result per recipient — including partial failure, where
- * some recipients succeed and others don't — as long as the request itself
- * reaches the API. Throws only when the request as a whole cannot be
- * completed (network failure, non-2xx response), since at that point no
- * per-recipient results exist to report.
+ * PLACEHOLDER ENDPOINT: no contract ABI/bindings for batch_fund_c_address
+ * exist in this repo, so the invocation can't be built client-side with any
+ * confidence in the argument encoding. `POST /api/v1/fund/batch` (the
+ * confirmed submit endpoint, see submitSignedBatchFunding below) implies a
+ * prepare step must exist somewhere to produce the XDR it accepts, but this
+ * exact path/body is a best guess and must be reconciled against the real
+ * API once it's documented.
  */
-export async function submitBatchFunding(
+export async function prepareBatchFunding(
   fromAddress: string,
   recipients: BatchFundingRecipient[],
   network: StellarNetwork
-): Promise<BatchFundingResponse> {
-  const response = await fetch(`${API_BASE_URL}/batch-fund`, {
+): Promise<PreparedBatchFunding> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/fund/batch/prepare`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -187,16 +253,38 @@ export async function submitBatchFunding(
   });
 
   if (!response.ok) {
-    let message = `Batch funding request failed (${response.status})`;
-    try {
-      const body = (await response.json()) as { error?: string };
-      if (body && typeof body.error === "string" && body.error) {
-        message = body.error;
-      }
-    } catch {
-      // Response body wasn't JSON (or empty) — keep the generic status message.
-    }
-    throw new Error(message);
+    throw new Error(await extractApiErrorMessage(response, `Batch preparation failed (${response.status})`));
+  }
+
+  const body = (await response.json()) as Partial<PreparedBatchFunding>;
+  if (typeof body.xdr !== "string" || !body.xdr) {
+    throw new Error("Batch preparation response was missing the transaction to sign.");
+  }
+  return { xdr: body.xdr };
+}
+
+/**
+ * Submits a wallet-signed `batch_fund_c_address` transaction to the real
+ * batch endpoint (#671). Resolves with one result per recipient — including
+ * partial failure, where some recipients succeed and others don't — as long
+ * as the request itself reaches the API. Throws only when the request as a
+ * whole cannot be completed (network failure, non-2xx response), since at
+ * that point no per-recipient results exist to report.
+ */
+export async function submitSignedBatchFunding(
+  signedXdr: string,
+  network: StellarNetwork
+): Promise<BatchFundingResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/fund/batch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ signedXdr, network }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await extractApiErrorMessage(response, `Batch funding request failed (${response.status})`));
   }
 
   return (await response.json()) as BatchFundingResponse;
@@ -271,17 +359,34 @@ export async function listIncomingLocks(recipient: string, network: StellarNetwo
 }
 
 /**
- * Claims a matured lock on behalf of `claimant`. Throws
- * {@link LockAlreadyClaimedError} on a 409 response — the shape of
+ * Claims a matured lock on behalf of `claimant`. `proof` — a wallet-signed
+ * challenge from `signClaimProof` in src/lib/stellar.ts — establishes that
+ * the caller actually controls `claimant`; the previous version sent only
+ * `{ claimant, network }`, an unauthenticated claim anyone could submit for
+ * any address (#672). The exact proof fields the backend expects are a best
+ * guess pending the real API (see signClaimProof's own doc comment).
+ *
+ * Throws {@link LockAlreadyClaimedError} on a 409 response — the shape of
  * "someone else (or another session) already claimed this" — so callers can
  * distinguish it from a generic failure and reconcile their view instead of
  * just showing a retryable error.
  */
-export async function claimLock(lockId: string, claimant: string, network: StellarNetwork): Promise<Lock> {
+export async function claimLock(
+  lockId: string,
+  claimant: string,
+  network: StellarNetwork,
+  proof: ClaimProof
+): Promise<Lock> {
   const response = await fetch(`${API_BASE_URL}/locks/${encodeURIComponent(lockId)}/claim`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claimant, network }),
+    body: JSON.stringify({
+      claimant,
+      network,
+      message: proof.message,
+      signature: proof.signature,
+      signerAddress: proof.signerAddress,
+    }),
   });
 
   if (response.status === 409) {
