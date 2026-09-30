@@ -45,6 +45,10 @@ vi.mock("@/lib/avatar", () => ({
   AVATAR_ACCEPT_ATTR: "image/*",
 }));
 
+vi.mock("@/lib/api", () => ({
+  getFeeTierPreview: vi.fn(async () => null),
+}));
+
 vi.mock("@/hooks/useCopyToClipboard", () => ({
 
 /**
@@ -101,7 +105,7 @@ describe("Dashboard faucet", () => {
     });
   };
 
-  it.skip("renders faucet button on testnet when balance is zero", async () => {
+  it("renders faucet button on testnet when balance is zero", async () => {
     await renderDashboard();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);

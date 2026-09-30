@@ -100,10 +100,9 @@ describe("Sequence number consumption end-to-end", () => {
 
     // Kit: getAddress returns the source address (assertActiveAccountMatches).
     kitGetAddress.mockResolvedValue({ address: G_SOURCE });
-    // Kit: getNetwork returns undefined so the pre-sign network guard passes
-    // through without blocking. These tests exercise sequence-number behaviour
-    // across networks, not the network-mismatch guard itself.
-    kitGetNetwork.mockResolvedValue(undefined);
+    // Kit: getNetwork returns the network the transaction was built for, so
+    // the pre-sign network guard never trips in these integration tests.
+    kitGetNetwork.mockImplementation(async () => ({ network: "TESTNET" }));
     // Kit: signTransaction echoes the XDR so TransactionBuilder.fromXDR can
     // reconstruct the real transaction for submission.
     kitSignTransaction.mockImplementation(async (xdr: string) => ({ signedTxXdr: xdr }));
@@ -124,7 +123,7 @@ describe("Sequence number consumption end-to-end", () => {
 
   // A transaction's sequence is the account's *next* sequence, so an on-chain
   // sequence of 100 produces a transaction numbered 101.
-  it.skip("increments sequence number strictly by 1 across consecutive payment calls", async () => {
+  it("increments sequence number strictly by 1 across consecutive payment calls", async () => {
     const res1 = await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
     expect(res1.successful).toBe(true);
     expect(submitted[0].sequence).toBe("101");
@@ -135,7 +134,7 @@ describe("Sequence number consumption end-to-end", () => {
     expect(submitted[1].sequence).toBe("102");
   });
 
-  it.skip("handles cache expiration and fetches fresh sequence without collision", async () => {
+  it("handles cache expiration and fetches fresh sequence without collision", async () => {
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
     expect(submitted[0].sequence).toBe("101");
 

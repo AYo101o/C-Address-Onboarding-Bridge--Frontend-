@@ -773,6 +773,21 @@ export default function BridgePage() {
                   )}
                 </div>
 
+                {/* Also shown on the form step, not only on review: while #284
+                    blocks instant bridging, review is unreachable for every
+                    valid C-address, so the tier and discounted quote would
+                    otherwise never be seen. The quote only appears once the
+                    amount is valid. (#468, #655) */}
+                <FeeTierDisplay
+                  status={feeTierStatus}
+                  amount={
+                    debouncedAmount && isValidStellarAmount(debouncedAmount)
+                      ? Number(debouncedAmount)
+                      : undefined
+                  }
+                  asset={asset}
+                />
+
                 {!isLocked && bridgingBlocked && (
                   <div className="p-4 rounded-lg bg-[var(--error)]/10 border border-[var(--error)]/20 flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-[var(--error)] flex-shrink-0 mt-0.5" />

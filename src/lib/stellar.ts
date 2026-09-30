@@ -19,6 +19,7 @@ import {
   type BridgeTransactionData,
 } from "./types";
 import { withSequenceRetry } from "./sequenceManager";
+import { getNetwork as getFreighterNetwork } from "@stellar/freighter-api";
 
 export type { AppNetwork, WalletNetworkState, BridgeTransactionData } from "./types";
 
@@ -155,15 +156,6 @@ const SWITCH_POLL_INTERVAL_MS = 500;
 const SWITCH_POLL_TIMEOUT_MS = 8_000;
 
 /**
- * Asks the wallet to switch to `target` and waits for it to confirm.
- *
- * - `"switched"` — the wallet accepted and is now on `target`.
- * - `"cancelled"` — the wallet declined the prompt or never landed on the
- *   target within the timeout.
- * - `"manual"` — the injected wallet has no programmatic switch API, so the
- *   user must switch inside Freighter; the app's poller detects the change.
- */
-/**
  * Whether a mainnet action needs an explicit warning: the user is on mainnet
  * and the network changed recently, and they haven't acknowledged it yet.
  * Pure so it is unit-testable without rendering the page. (#480)
@@ -176,6 +168,15 @@ export function shouldWarnOnMainnetAction(
   return network === "PUBLIC" && recentlyChangedNetwork && !acknowledged;
 }
 
+/**
+ * Asks the wallet to switch to `target` and waits for it to confirm.
+ *
+ * - `"switched"` — the wallet accepted and is now on `target`.
+ * - `"cancelled"` — the wallet declined the prompt or never landed on the
+ *   target within the timeout.
+ * - `"manual"` — the injected wallet has no programmatic switch API, so the
+ *   user must switch inside Freighter; the app's poller detects the change.
+ */
 export async function switchWalletNetwork(target: StellarNetwork): Promise<SwitchNetworkResult> {
   const injected = (window as unknown as { freighter?: FreighterInjectedApi }).freighter;
   if (!injected?.setNetwork) {
@@ -190,10 +191,15 @@ export async function switchWalletNetwork(target: StellarNetwork): Promise<Switc
     return "cancelled";
   }
 
+  // Confirm via freighter-api directly rather than the multi-wallet
+  // getWalletNetwork()/StellarWalletsKit abstraction: switchWalletNetwork is
+  // already Freighter-specific (it only runs when window.freighter.setNetwork
+  // exists), and the kit singleton has no bearing on whether *this* request
+  // landed.
   const deadline = Date.now() + SWITCH_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const { status } = await getWalletNetwork();
-    if (status === target) {
+    const result = await getFreighterNetwork();
+    if (!result.error && String(result.network ?? "").toUpperCase() === target) {
       return "switched";
     }
     await new Promise((resolve) => setTimeout(resolve, SWITCH_POLL_INTERVAL_MS));
@@ -751,16 +757,20 @@ export function toSafeErrorMessage(error: unknown, fallback: string): string {
 export async function assertActiveAccountMatches(sourceAddress: string): Promise<void> {
   const active = await getWalletAddress();
 
+  // An empty/null address covers no wallet selected, a locked extension, and
+  // a kit error alike: none of them leaves an account that could sign. (#654)
   if (!active) {
     throw new Error(
-      "Couldn't read Freighter's active account. Connect (or unlock) Freighter and try again."
+      "No wallet is connected. Connect (or unlock) your wallet and try again."
     );
   }
 
+  // Refuse rather than substitute the active account: the payment must come
+  // from the address the user reviewed, or not be signed at all. (#654)
   if (active !== sourceAddress) {
     throw new Error(
-      `Freighter's active account (${truncateAddress(active)}) doesn't match the From address (${truncateAddress(sourceAddress)}). ` +
-        "Switch accounts in Freighter or use the connected address."
+      `Your wallet's active account (${truncateAddress(active)}) does not match the source address (${truncateAddress(sourceAddress)}). ` +
+        "Switch accounts in your wallet or use the connected address."
     );
   }
 }
