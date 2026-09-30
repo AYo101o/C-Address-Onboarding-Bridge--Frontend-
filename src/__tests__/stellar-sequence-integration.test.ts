@@ -152,7 +152,7 @@ describe("Sequence number consumption end-to-end", () => {
   // #290: switching Freighter's network inside the 30s TTL used to build the
   // second transaction from the *other* chain's cached sequence — a
   // near-guaranteed tx_bad_seq that only reproduced intermittently.
-  it.skip("does not carry a testnet sequence into a mainnet transaction", async () => {
+  it("does not carry a testnet sequence into a mainnet transaction", async () => {
     await buildAndSubmitPayment(G_SOURCE, G_DEST, "10", "XLM", "TESTNET");
     expect(submitted[0]).toEqual({ network: "TESTNET", sequence: "101" });
 
