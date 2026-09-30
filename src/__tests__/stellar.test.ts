@@ -172,6 +172,39 @@ describe("isGAddress", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Shared mock for Horizon.Server used by getAccountBalances and
+// fetchRecentTransactions tests. We mock Horizon.Server so the real SDK
+// network is never contacted; each describe block resets the relevant mock fn.
+// ---------------------------------------------------------------------------
+const loadAccount = vi.fn();
+const paymentsCall = vi.fn();
+
+vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@stellar/stellar-sdk")>();
+  return {
+    ...actual,
+    Horizon: {
+      ...actual.Horizon,
+      Server: vi.fn().mockImplementation(function MockHorizonServer(this: {
+        loadAccount: typeof loadAccount;
+        payments: () => unknown;
+      }) {
+        this.loadAccount = loadAccount;
+        this.payments = () => ({
+          forAccount: () => ({
+            limit: () => ({
+              order: () => ({
+                call: paymentsCall,
+              }),
+            }),
+          }),
+        });
+      }),
+    },
+  };
+});
+
 describe("getAccountBalances cache", () => {
   const account = (xlm: string) => ({
     balances: [{ asset_type: "native", balance: xlm }],
