@@ -543,7 +543,7 @@ function TransactionHistory({ transactions, loading, network, address }: Props) 
         </div>
       ) : showEmpty ? (
         <div className="p-12 text-center">
-          <p className="text-sm text-[var(--text-muted)]">No transactions found</p>
+          <p className="text-sm text-[var(--text-muted)]">No transactions found for this account.</p>
         </div>
       ) : showFilteredEmpty ? (
         <div className="p-12 text-center">
