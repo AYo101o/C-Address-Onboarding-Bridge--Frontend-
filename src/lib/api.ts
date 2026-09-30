@@ -82,6 +82,70 @@ export function getStatusMessage(health: HealthStatus | null): string | null {
   }
 }
 
+/**
+ * Error categories surfaced to the UI so callers can render a targeted
+ * message instead of a generic "something went wrong".
+ */
+export type ErrorCategory = 'wallet' | 'network' | 'service' | 'unknown';
+
+/**
+ * Classifies an error into a coarse category for user-facing messaging.
+ *
+ * Classification is case-insensitive and matches on typed error names/codes
+ * first, then on message substrings, so messages like "Freighter's active
+ * account…" or "Network changed in Freighter…" are categorized correctly
+ * rather than falling through to `unknown`.
+ */
+export function classifyError(error: unknown): ErrorCategory {
+  const name = error instanceof Error ? error.name : '';
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '')
+      : '';
+  const message = error instanceof Error ? error.message : String(error);
+  const haystack = `${name} ${code} ${message}`.toLowerCase();
+
+  // Wallet errors take precedence: a wallet failure can mention "network"
+  // (e.g. "Network changed in Freighter") without being a network error.
+  if (
+    haystack.includes('wallet') ||
+    haystack.includes('freighter') ||
+    haystack.includes('user rejected') ||
+    haystack.includes('user denied') ||
+    haystack.includes('rejected by user') ||
+    haystack.includes('not connected') ||
+    haystack.includes('no account')
+  ) {
+    return 'wallet';
+  }
+
+  if (
+    haystack.includes('network') ||
+    haystack.includes('timeout') ||
+    haystack.includes('timed out') ||
+    haystack.includes('offline') ||
+    haystack.includes('fetch failed') ||
+    haystack.includes('failed to fetch')
+  ) {
+    return 'network';
+  }
+
+  if (
+    haystack.includes('service') ||
+    haystack.includes('unavailable') ||
+    haystack.includes('horizon') ||
+    haystack.includes('soroban') ||
+    haystack.includes('rpc') ||
+    haystack.includes('500') ||
+    haystack.includes('502') ||
+    haystack.includes('503')
+  ) {
+    return 'service';
+  }
+
+  return 'unknown';
+}
+
 export interface BatchFundingRecipient {
   address: string;
   amount: string;
@@ -240,148 +304,74 @@ export async function claimLock(lockId: string, claimant: string, network: Stell
  *
  * Returns null both when the account has no tier data yet and when the
  * request itself fails — callers treat "no data" as "hide the tier display"
- * either way (#468), so a transient fetch failure degrades to the same
- * silent-hide behavior as tiers genuinely not being configured, rather than
- * surfacing an error for what is supplementary information.
+ * either way
  */
-export async function getFeeTierPreview(address: string, network: StellarNetwork): Promise<FeeTierStatus | null> {
+export async function getFeeTierPreview(
+  address: string,
+  network: StellarNetwork
+): Promise<FeeTierStatus | null> {
   try {
     const response = await fetch(
       `${API_BASE_URL}/fee-tiers/preview?address=${encodeURIComponent(address)}&network=${encodeURIComponent(network)}`
     );
-    if (!response.ok) return null;
-    return (await response.json()) as FeeTierStatus | null;
-  } catch (error) {
-    console.error('Failed to fetch fee tier preview:', error);
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as FeeTierStatus;
+  } catch {
     return null;
   }
 }
 
 /**
- * Transaction export (#470).
+ * Referral stats (#469).
  *
- * PLACEHOLDER INTERFACE: this repo vendors no real API client for a
- * transaction export route yet (no contract source, no export-related route,
- * nothing in docs or elsewhere in `src/lib` — checked before writing this,
- * the same way #465's batch cap, #467's lock/claim shape, and #468's
- * fee-tier preview were). The route (`GET /transactions/export`), its query
- * params, and the paginated response shape below are a best guess and MUST
- * be reconciled against the real API once it lands.
+ * PLACEHOLDER INTERFACE: see `src/lib/referrals.ts` for why — no contract
+ * source or referral API route exists anywhere in this repo to build against
+ * yet. The route (`GET /referrals?address=&network=`) and response shape are
+ * a best-guess and must be reconciled against the real API once it lands.
  *
- * Modeled as cursor-paginated pages of the same `BridgeTransactionData` rows
- * used everywhere else in the app, rather than the server pre-formatting
- * CSV/JSON text: every page has a uniform shape regardless of the chosen
- * format, the client builds the final file with the formatting helpers in
- * `src/lib/transactionExport.ts`, and the UI gets real per-page progress
- * without needing to parse a partial CSV/JSON stream.
+ * Returns null both when the account has no referral data yet and when the
+ * request itself fails — callers treat "no data" as "hide the referral
+ * display" either way.
  */
-export type ExportFormat = "csv" | "json";
-
-export interface ExportTransactionsParams {
-  address: string;
-  network: StellarNetwork;
-  /** Inclusive range, epoch milliseconds. */
-  from: number;
-  to: number;
-  /** Opaque cursor returned by the previous page; omit to fetch the first page. */
-  cursor?: string;
-}
-
-export interface ExportTransactionsPage {
-  rows: BridgeTransactionData[];
-  /** Cursor for the next page, or null once this was the last page. */
-  nextCursor: string | null;
-  /**
-   * Total row count across the whole export, when the server can report it
-   * up front (used to render determinate progress). Null when unknown — the
-   * UI falls back to a running "N rows so far" count instead of a percentage.
-   */
-  totalCount: number | null;
-}
-
-/** Rows requested per export page. The server may return fewer. */
-const EXPORT_PAGE_SIZE = 200;
-
-/** Fetches one page of a date-ranged transaction export. Throws on any non-2xx response. */
-export async function fetchTransactionExportPage(params: ExportTransactionsParams): Promise<ExportTransactionsPage> {
-  const query = new URLSearchParams({
-    address: params.address,
-    network: params.network,
-    from: String(params.from),
-    to: String(params.to),
-    limit: String(EXPORT_PAGE_SIZE),
-  });
-  if (params.cursor) query.set("cursor", params.cursor);
-
-  const response = await fetch(`${API_BASE_URL}/transactions/export?${query.toString()}`);
-  if (!response.ok) {
-    throw new Error(await extractApiErrorMessage(response, `Export request failed (${response.status})`));
+export async function getReferralStats(
+  address: string,
+  network: StellarNetwork
+): Promise<ReferralStats | null> {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/referrals?address=${encodeURIComponent(address)}&network=${encodeURIComponent(network)}`
+    );
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as ReferralStats;
+  } catch {
+    return null;
   }
-  return (await response.json()) as ExportTransactionsPage;
 }
 
 /**
- * Distinguish if an error is service-related, wallet-related, or user error.
+ * Submits a signed transaction to the backend for relay to Horizon.
+ *
+ * PLACEHOLDER INTERFACE: no transaction submission route exists anywhere in
+ * this repo to build against yet; the route (`POST /transactions`) and
+ * response shape are a best-guess and must be reconciled against the real
+ * API once it lands.
  */
-export function classifyError(error: unknown, health: HealthStatus | null) {
-  const errorStr = String(error);
+export async function submitTransaction(
+  signedXdr: string,
+  network: StellarNetwork
+): Promise<BridgeTransactionData> {
+  const response = await fetch(`${API_BASE_URL}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ xdr: signedXdr, network }),
+  });
 
-  // Service errors
-  if (isServiceDegraded(health)) {
-    if (
-      errorStr.includes('timeout') ||
-      errorStr.includes('connection') ||
-      errorStr.includes('network')
-    ) {
-      return {
-        type: 'service' as const,
-        message: 'Service is experiencing issues. Please try again soon.',
-      };
-    }
+  if (!response.ok) {
+    throw new Error(await extractApiErrorMessage(response, `Transaction submission failed (${response.status})`));
   }
-
-  // Wallet errors
-  if (
-    errorStr.includes('wallet') ||
-    errorStr.includes('freighter') ||
-    errorStr.includes('not connected')
-  ) {
-    return {
-      type: 'wallet' as const,
-      message: 'Please check your wallet connection and try again.',
-    };
-  }
-
-  // Network errors
-  if (errorStr.includes('network') || errorStr.includes('offline')) {
-    return {
-      type: 'network' as const,
-      message: 'Network issue detected. Please check your connection.',
-    };
-  }
-
-  // User/validation errors
-  if (
-    errorStr.includes('invalid') ||
-    errorStr.includes('insufficient') ||
-    errorStr.includes('balance')
-  ) {
-    return {
-      type: 'user' as const,
-      message: String(error),
-    };
-  }
-
-  // Default to service error if we're degraded
-  if (isServiceDegraded(health)) {
-    return {
-      type: 'service' as const,
-      message: 'An error occurred. The service may be experiencing issues.',
-    };
-  }
-
-  return {
-    type: 'unknown' as const,
-    message: 'An unexpected error occurred. Please try again.',
-  };
+  return (await response.json()) as BridgeTransactionData;
 }
