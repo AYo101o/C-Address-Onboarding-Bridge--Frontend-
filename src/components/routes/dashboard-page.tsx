@@ -538,7 +538,7 @@ export default function DashboardPage() {
                 {shownBalance !== null ? parseFloat(shownBalance).toFixed(2) : "—"}
               </div>
               <div className="text-xs text-[var(--text-muted)]">XLM</div>
-              {network === "TESTNET" && !showLoading && (
+              {network === "TESTNET" && !showLoading && (shownBalance === null || parseFloat(shownBalance) === 0) && (
                 <div className="mt-3">
                   <button
                     onClick={handleFaucet}
